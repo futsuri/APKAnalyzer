@@ -1,0 +1,10 @@
+# Конфигурация путей к инструментам (используется если нет .env)
+tools:
+  apktool: "../apktool.bat"
+  jadx: "../jadx.bat"
+  java: "..java.exe"
+
+# Настройки анализа
+analysis:
+  timeout: 300  # секунд
+  max_libraries: 50
