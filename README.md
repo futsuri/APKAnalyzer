@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 📖 Руководство по установке и настройке APK Analyzer
 
 ## 📑 Содержание
@@ -416,3 +417,7 @@ python main.py вашфайл.apk
 ```text
 data/output/static/
 ```
+=======
+# APKAnalyzer
+A program designed for analyzing APK files, developed by students during their industrial training at the [removed]. Includes statistical, dynamic, permissions and software behavior analysis
+>>>>>>> 6734d0cb368404524dea967ed9252c1546233deb
