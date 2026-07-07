@@ -1,6 +1,6 @@
 from typing import List, Dict
-from models.analysis import Permission, RiskLevel
-from config import DANGEROUS_PERMISSIONS
+from src.models.analysis import Permission, RiskLevel
+from src.core.config import DANGEROUS_PERMISSIONS
 
 
 class PermissionParser:
@@ -25,7 +25,7 @@ class PermissionParser:
             "safe": len(safe),
             "risk_counts": risk_counts,
             "dangerous_list": [p.name for p in dangerous],
-            "risk_score": self._calculate_risk_score(permissions)
+            "risk_score": PermissionParser._calculate_risk_score(permissions)
         }
 
     @staticmethod

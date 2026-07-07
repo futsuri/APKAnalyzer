@@ -1,9 +1,10 @@
 import json
 from typing import Dict, Any
 from pathlib import Path
+from datetime import datetime
 import markdown
 
-from models.analysis import AnalysisResult, RiskLevel
+from src.models.analysis import AnalysisResult, RiskLevel
 
 
 class ReportGenerator:
@@ -16,7 +17,7 @@ class ReportGenerator:
 
         # Заголовок
         lines.append(f"# Анализ APK: {result.apk_file}\n")
-        lines.append(f"**Дата анализа:** {Path(result.apk_file).stat().st_mtime}\n")
+        lines.append(f"**Дата анализа:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         lines.append("---\n")
 
         # Информация о приложении
@@ -105,47 +106,107 @@ class ReportGenerator:
     @staticmethod
     def generate_json(result: AnalysisResult) -> str:
         """Генерирует JSON отчёт"""
-        return json.dumps(result.model_dump(), indent=2, default=str)
+        return json.dumps(result.model_dump(), indent=2, default=str, ensure_ascii=False)
 
     @staticmethod
     def generate_html(result: AnalysisResult) -> str:
         """Генерирует HTML отчёт"""
         md_content = ReportGenerator.generate_markdown(result)
         html_content = markdown.markdown(md_content, extensions=['extra', 'tables'])
-        return f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>APK Analysis Report</title>
-            <style>
-                body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; background: #f5f5f5; }}
-                .container {{ background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
-                code {{ background: #f0f0f0; padding: 2px 6px; border-radius: 4px; font-size: 14px; }}
-                pre {{ background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 6px; overflow-x: auto; }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                {html_content}
-            </div>
-        </body>
-        </html>
-        """
+        return f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>APK Analysis Report - {result.apk_file}</title>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 30px;
+            background: #f8f9fa;
+            color: #212529;
+            line-height: 1.6;
+        }}
+        .container {{
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+            border: 1px solid #e9ecef;
+        }}
+        h1 {{
+            color: #1a73e8;
+            border-bottom: 2px solid #e8f0fe;
+            padding-bottom: 15px;
+            margin-top: 0;
+        }}
+        h2 {{
+            color: #3c4043;
+            border-bottom: 1px solid #e8eaed;
+            padding-bottom: 8px;
+            margin-top: 30px;
+        }}
+        h3 {{
+            color: #137333;
+            margin-top: 20px;
+        }}
+        code {{
+            background: #f1f3f4;
+            color: #c7254e;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+        }}
+        pre {{
+            background: #202124;
+            color: #f1f3f4;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+        }}
+        pre code {{
+            background: transparent;
+            color: inherit;
+            padding: 0;
+            font-size: 13px;
+        }}
+        ul {{
+            padding-left: 20px;
+        }}
+        li {{
+            margin-bottom: 6px;
+        }}
+        hr {{
+            border: 0;
+            border-top: 1px solid #e8eaed;
+            margin: 20px 0;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        {html_content}
+    </div>
+</body>
+</html>
+"""
 
     @staticmethod
     def save_report(result: AnalysisResult, output_dir: Path, formats: list = ["md", "json", "html"]):
         """Сохраняет отчёт в указанные форматы"""
-        output_dir.mkdir(exist_ok=True)
+        output_dir.mkdir(exist_ok=True, parents=True)
+        stem = Path(result.apk_file).stem
 
         if "md" in formats:
-            md_path = output_dir / f"{result.apk_file}_report.md"
+            md_path = output_dir / f"{stem}_report.md"
             md_path.write_text(ReportGenerator.generate_markdown(result), encoding='utf-8')
 
         if "json" in formats:
-            json_path = output_dir / f"{result.apk_file}_report.json"
+            json_path = output_dir / f"{stem}_report.json"
             json_path.write_text(ReportGenerator.generate_json(result), encoding='utf-8')
 
         if "html" in formats:
-            html_path = output_dir / f"{result.apk_file}_report.html"
+            html_path = output_dir / f"{stem}_report.html"
             html_path.write_text(ReportGenerator.generate_html(result), encoding='utf-8')

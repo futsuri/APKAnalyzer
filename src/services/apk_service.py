@@ -7,7 +7,8 @@ from pathlib import Path
 from src.core.config import APKTOOL_PATH, JADX_PATH, TIMEOUT, MAX_LIBRARIES
 from src.static.parsers.manifest_parser import ManifestParser
 from src.static.detectors.identifier_detector import IdentifierDetector
-from src.static.detectors.secret_detector import SecretDetector  
+from src.static.detectors.secret_detector import SecretDetector
+from src.models.analysis import AnalysisResult, Manifest, Permission, Component, Secret, Identifier
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,7 @@ class ApkService:
         self.apk_path = apk_path
         self.temp_dir = None
 
-    def analyze_simple(self):
+    def analyze_simple(self) -> AnalysisResult:
         logger.info(f"Начинаем анализ APK: {self.apk_path}")
 
         result = {
@@ -47,17 +48,67 @@ class ApkService:
                 result['identifiers'] = identifier_detector.scan()
                 logger.info("Поиск идентификаторов завершён")
 
-                secret_detector = SecretDetector(source_dir)  # Исправлено!
-                result['secrets'] = secret_detector.scan()    # Исправлено!
+                secret_detector = SecretDetector(source_dir)
+                result['secrets'] = secret_detector.scan()
                 logger.info(f"Найдено секретов: {len(result['secrets'])}")
 
                 result['libraries'] = self._collect_libraries(source_dir)
 
+            # Преобразование в объекты моделей
+            manifest_obj = None
+            if result['manifest']:
+                manifest_data = result['manifest']
+                perms = [
+                    Permission(p['name'], p['is_dangerous'], description=p.get('description'))
+                    for p in manifest_data.get('permissions', [])
+                ]
+                activities = [Component(c['name'], c['exported'], 'activity') for c in manifest_data.get('activities', [])]
+                services = [Component(c['name'], c['exported'], 'service') for c in manifest_data.get('services', [])]
+                receivers = [Component(c['name'], c['exported'], 'receiver') for c in manifest_data.get('receivers', [])]
+                providers = [Component(c['name'], c['exported'], 'provider') for c in manifest_data.get('providers', [])]
+                
+                manifest_obj = Manifest(
+                    package=manifest_data.get('package', 'unknown'),
+                    version_code=manifest_data.get('version_code', '0'),
+                    version_name=manifest_data.get('version_name', 'unknown'),
+                    min_sdk=manifest_data.get('min_sdk', 0),
+                    target_sdk=manifest_data.get('target_sdk', 0),
+                    permissions=perms,
+                    activities=activities,
+                    services=services,
+                    receivers=receivers,
+                    providers=providers
+                )
+
+            identifiers_obj = {}
+            for name, data in result['identifiers'].items():
+                identifiers_obj[name] = Identifier(
+                    name=name,
+                    found=data.get('found', False),
+                    locations=data.get('locations', []),
+                    risk_level=None
+                )
+
+            secrets_obj = []
+            for s in result['secrets']:
+                secrets_obj.append(Secret(
+                    type=s.get('type'),
+                    value=s.get('value'),
+                    location=s.get('location'),
+                    risk_level=None
+                ))
+
+            return AnalysisResult(
+                apk_file=self.apk_path.name,
+                manifest=manifest_obj,
+                identifiers=identifiers_obj,
+                secrets=secrets_obj,
+                libraries=result['libraries']
+            )
+
         except Exception as e:
             logger.error(f"Ошибка при анализе APK: {e}")
             raise
-
-        return result
 
     def _run_apktool(self):
         output_dir = self.temp_dir / "apktool"
@@ -65,7 +116,6 @@ class ApkService:
         logger.info(f"Запуск: {cmd}")
 
         try:
-            # Запускаем без захвата вывода, чтобы не было проблем с кодировкой
             result = subprocess.run(cmd, shell=True, timeout=TIMEOUT)
             if result.returncode != 0:
                 logger.warning(f"apktool завершился с кодом {result.returncode}")
@@ -102,7 +152,7 @@ class ApkService:
         for path in source_dir.rglob("*.java"):
             if path.parent.name and not path.parent.name.startswith('.'):
                 rel_path = path.relative_to(source_dir)
-                parts = str(rel_path).split('/')
+                parts = rel_path.parts
                 if len(parts) >= 2:
                     pkg = '.'.join(parts[:2])
                     if not pkg.startswith(('android', 'java', 'javax', 'androidx')):
