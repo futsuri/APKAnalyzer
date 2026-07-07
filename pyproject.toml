@@ -1,0 +1,38 @@
+[tool.poetry]
+name = "apk-analyzer"
+version = "0.1.0"
+description = "Static APK analyzer CLI"
+authors = ["APK Analyzer Team"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.11"
+androguard = "4.1.4"
+markdown = "3.5.1"
+pyyaml = "6.0.1"
+python-dotenv = "1.0.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3"
+ruff = "^0.8"
+
+[tool.poetry.scripts]
+apk-analyzer = "main:main"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+src = ["src", "."]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[build-system]
+requires = ["poetry-core>=1.8.0"]
+build-backend = "poetry.core.masonry.api"
