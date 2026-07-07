@@ -1,0 +1,264 @@
+version: "1.0.0"
+description: "Глобальный каталог идентификаторов устройства для СПМ-1 и СПМ-2"
+
+identifiers:
+  # КАТЕГОРИЯ: HARDWARE & TELEPHONY (Железо)
+  - id: "hw_imei"
+    name: "IMEI / International Mobile Equipment Identity"
+    category: "hardware"
+    severity: "CRITICAL"
+    description: "Международный идентификатор мобильного оборудования. Уникален для каждого слота SIM-карты."
+    permissions:
+      - "android.permission.READ_PHONE_STATE"
+      - "android.permission.READ_PRIVILEGED_PHONE_STATE" # Для Android 10+
+    static_signatures:
+      - "Landroid/telephony/TelephonyManager;->getDeviceId"
+      - "Landroid/telephony/TelephonyManager;->getImei"
+      - "getDeviceId("
+      - "getImei("
+    frida_hook:
+      class: "android.telephony.TelephonyManager"
+      methods:
+        - "getDeviceId"
+        - "getImei"
+      [cite_start]mask_strategy: "sha256" # Требование для Кости/Кирилла 
+    traffic_detection:
+      transformations: ["plain", "hex", "md5", "sha1", "sha256"]
+      [cite_start]evidence_target: "traffic.evidence" # Поле для Кирилла 
+
+  - id: "hw_imsi"
+    name: "IMSI / International Subscriber Mobile Identity"
+    category: "telephony"
+    severity: "CRITICAL"
+    description: "Уникальный идентификатор абонента, привязанный к SIM-карте."
+    permissions:
+      - "android.permission.READ_PHONE_STATE"
+    static_signatures:
+      - "Landroid/telephony/TelephonyManager;->getSubscriberId"
+      - "getSubscriberId("
+    frida_hook:
+      class: "android.telephony.TelephonyManager"
+      methods:
+        - "getSubscriberId"
+      mask_strategy: "sha256"
+    traffic_detection:
+      transformations: ["plain", "md5", "sha256"]
+      evidence_target: "traffic.evidence"
+
+  - id: "hw_iccid"
+    name: "SIM Serial Number / ICCID"
+    category: "telephony"
+    severity: "HIGH"
+    description: "Серийный номер самой пластиковой SIM-карты."
+    permissions:
+      - "android.permission.READ_PHONE_STATE"
+    static_signatures:
+      - "Landroid/telephony/TelephonyManager;->getSimSerialNumber"
+      - "getSimSerialNumber("
+    frida_hook:
+      class: "android.telephony.TelephonyManager"
+      methods:
+        - "getSimSerialNumber"
+      mask_strategy: "md5"
+    traffic_detection:
+      transformations: ["plain", "hex"]
+      evidence_target: "traffic.evidence"
+
+  - id: "hw_phone_number"
+    name: "Line 1 Phone Number"
+    category: "telephony"
+    severity: "CRITICAL"
+    description: "Номер телефона пользователя, прописанный в SIM-карте (если доступен)."
+    permissions:
+      - "android.permission.READ_PHONE_STATE"
+      - "android.permission.READ_SMS"
+      - "android.permission.READ_PHONE_NUMBERS"
+    static_signatures:
+      - "Landroid/telephony/TelephonyManager;->getLine1Number"
+      - "getLine1Number("
+    frida_hook:
+      class: "android.telephony.TelephonyManager"
+      methods:
+        - "getLine1Number"
+      mask_strategy: "custom_phone_mask"
+    traffic_detection:
+      transformations: ["plain", "url_encoded", "cleared_digits"]
+      evidence_target: "traffic.evidence"
+
+  - id: "hw_serial"
+    name: "Hardware Serial Number"
+    category: "hardware"
+    severity: "HIGH"
+    description: "Аппаратный серийный номер устройства (Build.SERIAL)."
+    permissions:
+      - "android.permission.READ_PHONE_STATE" # С Android 8.0+
+    static_signatures:
+      - "Landroid/os/Build;->SERIAL:Ljava/lang/String;"
+      - "Landroid/os/Build;->getSerial"
+      - "getSerial("
+    frida_hook:
+      class: "android.os.Build"
+      methods:
+        - "getSerial"
+      fields:
+        - "SERIAL"
+      mask_strategy: "sha256"
+    traffic_detection:
+      transformations: ["plain", "hex", "sha256"]
+      evidence_target: "traffic.evidence"
+
+  # КАТЕГОРИЯ: SOFTWARE IDENTIFIERS (Софт)
+  - id: "sw_android_id"
+    name: "Android ID / SSAID"
+    category: "software"
+    severity: "HIGH"
+    description: "64-битный идентификатор, уникальный для каждой связки приложения, пользователя и устройства."
+    permissions: [] # Разрешений не требует
+    static_signatures:
+      - "android_id"
+      - "Landroid/provider/Settings$Secure;->getString"
+      - "Landroid/provider/Settings$System;->getString"
+    frida_hook:
+      class: "android.provider.Settings$Secure"
+      methods:
+        - "getString"
+      argument_trigger: "android_id" # Хукаем getString, проверяем, что аргумент == 'android_id'
+      mask_strategy: "sha256"
+    traffic_detection:
+      transformations: ["plain", "hex", "lowercase", "uppercase"]
+      evidence_target: "traffic.evidence"
+
+  - id: "sw_gsf_id"
+    name: "Google Services Framework ID (GSF ID)"
+    category: "software"
+    severity: "HIGH"
+    description: "Идентификатор аккаунта Google Services на устройстве. Часто используется для скрытого трекинга."
+    permissions: []
+    static_signatures:
+      - "content://com.google.android.gsf.gservices"
+    frida_hook:
+      class: "android.content.ContentResolver"
+      methods:
+        - "query"
+      argument_trigger: "content://com.google.android.gsf.gservices"
+      mask_strategy: "sha256"
+    traffic_detection:
+      transformations: ["plain", "hex"]
+      evidence_target: "traffic.evidence"
+
+  - id: "sw_aaid"
+    name: "Google Advertising ID (AAID)"
+    category: "software"
+    severity: "MEDIUM"
+    description: "Рекламный идентификатор Google Play Services. Сбрасываемый пользователем."
+    permissions:
+      - "com.google.android.gms.permission.AD_ID"
+    static_signatures:
+      - "Lcom/google/android/gms/ads/identifier/AdvertisingIdClient;->getAdvertisingIdInfo"
+      - "AdvertisingIdClient"
+      - "getId("
+    frida_hook:
+      class: "com.google.android.gms.ads.identifier.AdvertisingIdClient$Info"
+      methods:
+        - "getId"
+      mask_strategy: "plain"
+    traffic_detection:
+      transformations: ["plain", "lowercase", "uppercase"]
+      evidence_target: "traffic.evidence"
+
+  - id: "sw_oaid"
+    name: "Vendor Open Anonymous Device Identifier (OAID)"
+    category: "software"
+    severity: "MEDIUM"
+    description: "Аналог AAID для китайских вендоров (Huawei, Xiaomi, Oppo и др.). Часто встречается в кастомных сборках."
+    permissions: []
+    static_signatures:
+      - "com.uodis.opendevice.aidl.OpenDeviceIdentifierService"
+      - "com.huawei.hms.ads.identifier.AdvertisingIdClient"
+    frida_hook:
+      class: "com.huawei.hms.ads.identifier.AdvertisingIdClient"
+      methods:
+        - "getAdvertisingIdInfo"
+      mask_strategy: "plain"
+    traffic_detection:
+      transformations: ["plain"]
+      evidence_target: "traffic.evidence"
+
+  # КАТЕГОРИЯ: NETWORK & ENVIRONMENT (Сеть)
+  - id: "net_wifi_mac"
+    name: "Wi-Fi MAC Address"
+    category: "network"
+    severity: "HIGH"
+    description: "Аппаратный MAC-адрес Wi-Fi интерфейса."
+    permissions:
+      - "android.permission.ACCESS_WIFI_STATE"
+    static_signatures:
+      - "Landroid/net/wifi/WifiInfo;->getMacAddress"
+      - "getMacAddress("
+    frida_hook:
+      class: "android.net.wifi.WifiInfo"
+      methods:
+        - "getMacAddress"
+      mask_strategy: "mac_anonymize"
+    traffic_detection:
+      transformations: ["plain", "no_colons", "md5"] # Например: AA:BB:CC vs AABBCC
+      evidence_target: "traffic.evidence"
+
+  - id: "net_bssid"
+    name: "Wi-Fi BSSID (Access Point MAC)"
+    category: "network"
+    severity: "HIGH"
+    description: "MAC-адрес текущей точки доступа Wi-Fi. Позволяет точно геолоцировать устройство."
+    permissions:
+      - "android.permission.ACCESS_FINE_LOCATION"
+      - "android.permission.ACCESS_COARSE_LOCATION"
+      - "android.permission.ACCESS_WIFI_STATE"
+    static_signatures:
+      - "Landroid/net/wifi/WifiInfo;->getBSSID"
+      - "getBSSID("
+    frida_hook:
+      class: "android.net.wifi.WifiInfo"
+      methods:
+        - "getBSSID"
+      mask_strategy: "mac_anonymize"
+    traffic_detection:
+      transformations: ["plain", "no_colons"]
+      evidence_target: "traffic.evidence"
+
+  # КАТЕГОРИЯ: Окружение)
+  - id: "os_build_fingerprint"
+    name: "Build Fingerprint"
+    category: "os_properties"
+    severity: "LOW"
+    description: "Строка описания сборки ОС. Активно собирается системами антифрода для фингерпринтинга."
+    permissions: []
+    static_signatures:
+      - "Landroid/os/Build;->FINGERPRINT:Ljava/lang/String;"
+    frida_hook:
+      class: "android.os.Build"
+      fields:
+        - "FINGERPRINT"
+      mask_strategy: "plain"
+    traffic_detection:
+      transformations: ["plain", "url_encoded"]
+      evidence_target: "traffic.evidence"
+
+  # КАТЕГОРИЯ: DRM & SECURITY IDENTIFIERS (Слепки)
+  - id: "drm_widevine_id"
+    name: "Widevine Media DRM Device ID"
+    category: "crypto"
+    severity: "HIGH"
+    description: "Уникальный аппаратный ID DRM-системы Widevine. Не сбрасывается даже при factory reset."
+    permissions: []
+    static_signatures:
+      - "Landroid/media/MediaDrm;"
+      - "deviceUniqueId"
+    frida_hook:
+      class: "android.media.MediaDrm"
+      methods:
+        - "getPropertyByteArray"
+      argument_trigger: "deviceUniqueId"
+      mask_strategy: "sha256"
+    traffic_detection:
+      transformations: ["base64", "hex"]
+      evidence_target: "traffic.evidence"
