@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 
 from src.core.config import APKTOOL_PATH, JADX_PATH, TIMEOUT, MAX_LIBRARIES
+from src.models.analysis import AnalysisResult, Identifier, Secret
 from src.static.parsers.manifest_parser import ManifestParser
 from src.static.detectors.identifier_detector import IdentifierDetector
 from src.static.detectors.secret_detector import SecretDetector  
@@ -17,16 +18,10 @@ class ApkService:
         self.apk_path = apk_path
         self.temp_dir = None
 
-    def analyze_simple(self):
+    def analyze_simple(self) -> AnalysisResult:
         logger.info(f"Начинаем анализ APK: {self.apk_path}")
 
-        result = {
-            'apk_file': self.apk_path.name,
-            'manifest': None,
-            'identifiers': {},
-            'secrets': [],
-            'libraries': []
-        }
+        result = AnalysisResult(apk_file=self.apk_path.name)
 
         try:
             self.temp_dir = Path(tempfile.mkdtemp(prefix="apk_analysis_"))
@@ -39,23 +34,38 @@ class ApkService:
             if manifest_path.exists():
                 manifest_parser = ManifestParser(manifest_path)
                 manifest_data = manifest_parser.parse()
-                result['manifest'] = manifest_data
-                logger.info(f"Манифест обработан: {manifest_data.get('package', 'unknown')}")
+                result.manifest = manifest_data
+                if manifest_data:
+                    logger.info(f"Манифест обработан: {manifest_data.package}")
 
             if source_dir and source_dir.exists():
                 identifier_detector = IdentifierDetector(source_dir)
-                result['identifiers'] = identifier_detector.scan()
+                result.identifiers = {
+                    name: Identifier.from_dict(name, data)
+                    for name, data in identifier_detector.scan().items()
+                }
                 logger.info("Поиск идентификаторов завершён")
 
                 secret_detector = SecretDetector(source_dir)  # Исправлено!
-                result['secrets'] = secret_detector.scan()    # Исправлено!
-                logger.info(f"Найдено секретов: {len(result['secrets'])}")
+                result.secrets = [Secret.from_dict(secret) for secret in secret_detector.scan()]
+                logger.info(f"Найдено секретов: {len(result.secrets)}")
 
-                result['libraries'] = self._collect_libraries(source_dir)
+                result.libraries = self._collect_libraries(source_dir)
 
         except Exception as e:
             logger.error(f"Ошибка при анализе APK: {e}")
             raise
+
+        result.summary = {
+            "apk_file": result.apk_file,
+            "package": result.manifest.package if result.manifest else "unknown",
+            "version": result.manifest.version_name if result.manifest else "unknown",
+            "permissions_count": len(result.manifest.permissions) if result.manifest else 0,
+            "identifiers_found": sum(1 for identifier in result.identifiers.values() if identifier.found),
+            "identifiers_total": len(result.identifiers),
+            "secrets_count": len(result.secrets),
+            "libraries_count": len(result.libraries),
+        }
 
         return result
 
@@ -102,7 +112,7 @@ class ApkService:
         for path in source_dir.rglob("*.java"):
             if path.parent.name and not path.parent.name.startswith('.'):
                 rel_path = path.relative_to(source_dir)
-                parts = str(rel_path).split('/')
+                parts = rel_path.parts
                 if len(parts) >= 2:
                     pkg = '.'.join(parts[:2])
                     if not pkg.startswith(('android', 'java', 'javax', 'androidx')):

@@ -1,0 +1,38 @@
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    POETRY_VIRTUALENVS_CREATE=false \
+    POETRY_NO_INTERACTION=1 \
+    APKTOOL_PATH=apktool \
+    JADX_PATH=jadx \
+    JAVA_PATH=java
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        openjdk-17-jre-headless \
+        curl \
+        unzip \
+        git \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL -o /usr/local/bin/apktool https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts/linux/apktool \
+    && curl -fsSL -o /usr/local/bin/apktool.jar https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_3.0.2.jar \
+    && chmod +x /usr/local/bin/apktool
+
+RUN curl -fsSL -o /tmp/jadx.zip https://github.com/skylot/jadx/releases/download/v1.5.5/jadx-1.5.5.zip \
+    && unzip /tmp/jadx.zip -d /opt \
+    && ln -s /opt/jadx-1.5.5/bin/jadx /usr/local/bin/jadx \
+    && rm /tmp/jadx.zip
+
+RUN pip install --no-cache-dir poetry==1.8.3
+
+COPY pyproject.toml ./
+COPY poetry.lock* ./
+RUN poetry install --no-ansi
+
+COPY . .
+
+ENTRYPOINT ["python", "main.py"]
