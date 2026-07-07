@@ -1,10 +1,10 @@
-# Tool paths. Docker overrides these with environment variables.
+# Конфигурация путей к инструментам (используется если нет .env)
 tools:
-  apktool: "apktool"
-  jadx: "jadx"
-  java: "java"
+  apktool: "../apktool.bat"
+  jadx: "../jadx.bat"
+  java: "..java.exe"
 
-# Analysis settings.
+# Настройки анализа
 analysis:
-  timeout: 300
+  timeout: 300  # секунд
   max_libraries: 50
