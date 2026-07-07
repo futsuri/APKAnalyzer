@@ -1,4 +1,4 @@
-import logging
+﻿import logging
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -6,15 +6,6 @@ from pathlib import Path
 from src.core.config import DANGEROUS_PERMISSIONS
 
 logger = logging.getLogger(__name__)
-
-NS_ANDROID = "{http://schemas.android.com/apk/res/android}"
-
-
-def get_android_attr(element, attr_name, default=''):
-    val = element.get(f'{NS_ANDROID}{attr_name}')
-    if val is None:
-        val = element.get(f'android:{attr_name}')
-    return val if val is not None else default
 
 
 class ManifestParser:
@@ -35,8 +26,8 @@ class ManifestParser:
 
         manifest_data = {
             'package': root.get('package', 'unknown'),
-            'version_code': get_android_attr(root, 'versionCode', '0'),
-            'version_name': get_android_attr(root, 'versionName', 'unknown'),
+            'version_code': root.get('android:versionCode', '0'),
+            'version_name': root.get('android:versionName', 'unknown'),
             'min_sdk': 0,
             'target_sdk': 0,
             'permissions': [],
@@ -48,19 +39,11 @@ class ManifestParser:
 
         uses_sdk = root.find('uses-sdk')
         if uses_sdk is not None:
-            min_sdk_str = get_android_attr(uses_sdk, 'minSdkVersion', '0')
-            target_sdk_str = get_android_attr(uses_sdk, 'targetSdkVersion', '0')
-            try:
-                manifest_data['min_sdk'] = int(min_sdk_str)
-            except ValueError:
-                manifest_data['min_sdk'] = 0
-            try:
-                manifest_data['target_sdk'] = int(target_sdk_str)
-            except ValueError:
-                manifest_data['target_sdk'] = 0
+            manifest_data['min_sdk'] = int(uses_sdk.get('android:minSdkVersion', '0') or '0')
+            manifest_data['target_sdk'] = int(uses_sdk.get('android:targetSdkVersion', '0') or '0')
 
         for perm in root.findall('uses-permission'):
-            name = get_android_attr(perm, 'name', '')
+            name = perm.get('android:name', '')
             if name:
                 manifest_data['permissions'].append({
                     'name': name,
@@ -70,12 +53,11 @@ class ManifestParser:
 
         for tag in ['activity', 'service', 'receiver', 'provider']:
             for comp in root.findall(tag):
-                name = get_android_attr(comp, 'name', '')
+                name = comp.get('android:name', '')
                 if name:
-                    exported_val = get_android_attr(comp, 'exported', 'false')
                     manifest_data[tag + 's'].append({
                         'name': name,
-                        'exported': exported_val.lower() == 'true',
+                        'exported': comp.get('android:exported', 'false') == 'true',
                         'type': tag
                     })
 
