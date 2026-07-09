@@ -1,8 +1,8 @@
 # Конфигурация путей к инструментам (используется если нет .env)
 tools:
-  apktool: "../apktool.bat"
-  jadx: "../jadx.bat"
-  java: "..java.exe"
+  apktool: "apktool"
+  jadx: "jadx"
+  java: "java"
 
 # Настройки анализа
 analysis:

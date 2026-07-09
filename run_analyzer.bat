@@ -16,6 +16,7 @@ for %%I in ("%APK_FILE%") do (
     set "APK_DIR=%%~dpI"
     set "APK_NAME=%%~nxI"
 )
+if "%APK_DIR:~-1%"=="\" set "APK_DIR=%APK_DIR:~0,-1%"
 
 set "SCRIPT_DIR=%~dp0"
 if "%SCRIPT_DIR:~-1%"=="\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"

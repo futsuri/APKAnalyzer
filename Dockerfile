@@ -30,7 +30,6 @@ RUN curl -fsSL -o /tmp/jadx.zip https://github.com/skylot/jadx/releases/download
 RUN pip install --no-cache-dir poetry==1.8.3
 
 COPY pyproject.toml ./
-COPY poetry.lock* ./
 RUN poetry install --no-ansi
 
 COPY . .
