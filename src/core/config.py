@@ -55,17 +55,6 @@ DANGEROUS_PERMISSIONS = {
     "ANSWER_PHONE_CALLS": "Отвечать на звонки",
 }
 
-IDENTIFIER_PATTERNS = {
-    "IMEI": ["getDeviceId", "getImei", "getMeid"],
-    "Android ID": ["ANDROID_ID", "Settings.Secure"],
-    "MAC Address": ["getMacAddress", "WifiInfo", "getHardwareAddress"],
-    "Advertising ID": ["AdvertisingIdClient", "getAdvertisingIdInfo"],
-    "IMSI": ["getSubscriberId", "getSimSerialNumber"],
-    "Serial": ["Build.SERIAL", "getSerial"],
-    "Phone Number": ["getLine1Number"],
-    "Network Operator": ["getNetworkOperator", "getSimOperator"]
-}
-
 if os.getenv('DEBUG'):
     print(f"[CONFIG] APKTOOL_PATH: {APKTOOL_PATH}")
     print(f"[CONFIG] JADX_PATH: {JADX_PATH}")

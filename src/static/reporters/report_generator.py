@@ -54,18 +54,40 @@ class ReportGenerator:
         # Идентификаторы
         lines.append("\n## Использование идентификаторов устройства\n")
         if result.identifiers:
-            for name, ident in result.identifiers.items():
-                if ident.found:
-                    lines.append(f"\n### ✅ {name} **найден**")
-                    if ident.risk_level:
-                        lines.append(f"**Уровень риска:** `{ident.risk_level.value}`")
+            for finding in result.identifiers.values():
+                title = f"{finding.identifier_id} — {finding.name}"
+                if finding.found:
+                    lines.append(f"\n### ✅ {title} **найден**")
+                    lines.append(f"**Категория:** `{finding.category}`")
+                    lines.append(f"**Критичность:** `{finding.severity}`")
+                    lines.append(
+                        f"**Сигнал:** {'strong (permission + signature)' if finding.permissions_present_in_manifest else 'signature-only'}"
+                    )
+                    if finding.permissions:
+                        lines.append(
+                            f"**Permissions:** `{', '.join(finding.permissions)}`"
+                        )
+                    if finding.matched_signature:
+                        lines.append(f"**Matched signature:** `{finding.matched_signature}`")
+
+                    app_occurrences = [occ for occ in finding.occurrences if not occ.is_third_party]
+                    third_party_occurrences = [occ for occ in finding.occurrences if occ.is_third_party]
+                    lines.append(
+                        f"**Вхождений:** app={len(app_occurrences)}, sdk={len(third_party_occurrences)}"
+                    )
+
                     lines.append("\n**Найден в:**")
-                    for loc in ident.locations[:5]:  # Показываем первые 5
-                        lines.append(f"- `{loc['file']}` (строка {loc['line']})")
-                        if loc.get('code'):
-                            lines.append(f"  ```java\n  {loc['code']}\n  ```")
+                    for occurrence in finding.occurrences[:5]:
+                        source_tag = "SDK" if occurrence.is_third_party else "APP"
+                        lines.append(
+                            f"- [{source_tag}] `{occurrence.file}` (строка {occurrence.line})"
+                        )
+                        if occurrence.code:
+                            lines.append(f"  ```text\n  {occurrence.code}\n  ```")
                 else:
-                    lines.append(f"\n### ❌ {name} **не найден**")
+                    lines.append(f"\n### ❌ {title} **не найден**")
+                    lines.append(f"**Категория:** `{finding.category}`")
+                    lines.append(f"**Критичность:** `{finding.severity}`")
         else:
             lines.append("Идентификаторы не анализировались\n")
 
@@ -98,6 +120,9 @@ class ReportGenerator:
                 lines.append(f"- **Package:** `{result.manifest.package}`")
                 lines.append(f"- **Version:** `{result.manifest.version_name}`")
             lines.append(f"- **Идентификаторы найдены:** {sum(1 for i in result.identifiers.values() if i.found)}/{len(result.identifiers)}")
+            lines.append(
+                f"- **Strong signals:** {sum(1 for i in result.identifiers.values() if i.found and i.permissions_present_in_manifest)}"
+            )
             lines.append(f"- **Секреты найдены:** {len(result.secrets)}")
             lines.append(f"- **Библиотек обнаружено:** {len(result.libraries)}")
 

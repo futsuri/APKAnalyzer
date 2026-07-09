@@ -34,11 +34,13 @@ class SecretDetector:
         if not self.source_dir.exists():
             return []
 
-        java_files = list(self.source_dir.rglob("*.java"))
-        logger.info(f"Сканирование {len(java_files)} файлов")
+        scan_files = list(self.source_dir.rglob("*.java"))
+        scan_files.extend(self.source_dir.rglob("AndroidManifest.xml"))
+        scan_files.extend(self.source_dir.rglob("res/values/*.xml"))
+        logger.info(f"Сканирование {len(scan_files)} файлов")
 
-        for java_file in java_files:
-            self._scan_file(java_file)
+        for file_path in scan_files:
+            self._scan_file(file_path)
 
         return self.secrets
 

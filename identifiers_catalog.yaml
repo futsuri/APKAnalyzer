@@ -21,10 +21,10 @@ identifiers:
       methods:
         - "getDeviceId"
         - "getImei"
-      [cite_start]mask_strategy: "sha256" # Требование для Кости/Кирилла 
+      mask_strategy: "sha256" # Требование для Кости/Кирилла 
     traffic_detection:
       transformations: ["plain", "hex", "md5", "sha1", "sha256"]
-      [cite_start]evidence_target: "traffic.evidence" # Поле для Кирилла 
+      evidence_target: "traffic.evidence" # Поле для Кирилла 
 
   - id: "hw_imsi"
     name: "IMSI / International Subscriber Mobile Identity"
