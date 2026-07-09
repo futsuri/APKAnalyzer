@@ -270,3 +270,4 @@ test_jadx/
 *.report.md
 =======
 >>>>>>> 6734d0cb368404524dea967ed9252c1546233deb
+/.idea
