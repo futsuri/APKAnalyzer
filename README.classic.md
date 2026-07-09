@@ -233,7 +233,7 @@ pip install -r requirements.txt
 Или минимальный набор:
 
 ```bash
-pip install androguard markdown pyyaml python-dotenv
+pip install markdown pyyaml python-dotenv
 ```
 
 ---

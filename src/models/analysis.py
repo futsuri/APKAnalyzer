@@ -117,6 +117,87 @@ class Identifier:
 
 
 @dataclass
+class FindingOccurrence:
+    file: str
+    line: int
+    code: str
+    is_third_party: bool
+    package_guess: str | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "FindingOccurrence":
+        return cls(
+            file=data.get("file", ""),
+            line=int(data.get("line", 0) or 0),
+            code=data.get("code", ""),
+            is_third_party=bool(data.get("is_third_party", False)),
+            package_guess=data.get("package_guess"),
+        )
+
+    def model_dump(self) -> dict[str, Any]:
+        return {
+            "file": self.file,
+            "line": self.line,
+            "code": self.code,
+            "is_third_party": self.is_third_party,
+            "package_guess": self.package_guess,
+        }
+
+
+@dataclass
+class Finding:
+    identifier_id: str
+    name: str
+    category: str
+    severity: str
+    description: str | None = None
+    permissions: list[str] = field(default_factory=list)
+    found: bool = False
+    matched_signature: str | None = None
+    occurrences: list[FindingOccurrence] = field(default_factory=list)
+    permissions_present_in_manifest: bool = False
+    frida_hook: dict[str, Any] | None = None
+    traffic_detection: dict[str, Any] | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Finding":
+        return cls(
+            identifier_id=data.get("identifier_id", ""),
+            name=data.get("name", ""),
+            category=data.get("category", "unknown"),
+            severity=str(data.get("severity", "LOW")),
+            description=data.get("description"),
+            permissions=list(data.get("permissions", [])),
+            found=bool(data.get("found", False)),
+            matched_signature=data.get("matched_signature"),
+            occurrences=[
+                FindingOccurrence.from_dict(item) for item in data.get("occurrences", [])
+            ],
+            permissions_present_in_manifest=bool(
+                data.get("permissions_present_in_manifest", False)
+            ),
+            frida_hook=data.get("frida_hook"),
+            traffic_detection=data.get("traffic_detection"),
+        )
+
+    def model_dump(self) -> dict[str, Any]:
+        return {
+            "identifier_id": self.identifier_id,
+            "name": self.name,
+            "category": self.category,
+            "severity": self.severity,
+            "description": self.description,
+            "permissions": self.permissions,
+            "found": self.found,
+            "matched_signature": self.matched_signature,
+            "occurrences": [occurrence.model_dump() for occurrence in self.occurrences],
+            "permissions_present_in_manifest": self.permissions_present_in_manifest,
+            "frida_hook": self.frida_hook,
+            "traffic_detection": self.traffic_detection,
+        }
+
+
+@dataclass
 class Manifest:
     package: str = "unknown"
     version_code: str = "0"
@@ -163,7 +244,7 @@ class Manifest:
 class AnalysisResult:
     apk_file: str
     manifest: Manifest | None = None
-    identifiers: dict[str, Identifier] = field(default_factory=dict)
+    identifiers: dict[str, Finding] = field(default_factory=dict)
     secrets: list[Secret] = field(default_factory=list)
     libraries: list[str] = field(default_factory=list)
     summary: dict[str, Any] | None = None
@@ -171,13 +252,18 @@ class AnalysisResult:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AnalysisResult":
         manifest_data = data.get("manifest")
+        raw_identifiers = data.get("identifiers", {})
+        parsed_identifiers: dict[str, Finding] = {}
+        for key, value in raw_identifiers.items():
+            value = dict(value)
+            if "identifier_id" not in value:
+                value["identifier_id"] = key
+            parsed_identifiers[key] = Finding.from_dict(value)
+
         return cls(
             apk_file=data.get("apk_file", ""),
             manifest=Manifest.from_dict(manifest_data) if manifest_data else None,
-            identifiers={
-                name: Identifier.from_dict(name, identifier_data)
-                for name, identifier_data in data.get("identifiers", {}).items()
-            },
+            identifiers=parsed_identifiers,
             secrets=[Secret.from_dict(secret) for secret in data.get("secrets", [])],
             libraries=list(data.get("libraries", [])),
             summary=data.get("summary"),
