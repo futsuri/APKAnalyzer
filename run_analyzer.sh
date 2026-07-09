@@ -6,7 +6,12 @@ if [[ $# -lt 1 ]]; then
   exit 1
 fi
 
-APK_FILE="$(realpath "$1")"
+if command -v realpath >/dev/null 2>&1; then
+  APK_FILE="$(realpath "$1")"
+else
+  APK_FILE="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
+fi
+
 if [[ ! -f "$APK_FILE" ]]; then
   echo "APK file not found: $APK_FILE"
   exit 1
