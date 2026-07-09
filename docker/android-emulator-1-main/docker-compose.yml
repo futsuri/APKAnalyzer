@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  android-emulator:
+    build: ./android-emulator
+    container_name: android-emulator
+    ports:
+      - "5554:5554"   # ADB
+      - "5555:5555"   # ADB (альтернативный)
+      - "6080:6080"   # noVNC
+      - "5900:5900"   # VNC
+      - "27042:27042" # Frida Server
+    privileged: true
+    environment:
+      - DISPLAY=:0
+    depends_on:
+      - proxy
+    devices:
+      - /dev/kvm
+    volumes:
+      - /dev/kvm:/dev/kvm
+    shm_size: 2g
+    networks:
+      - backend
+
+  proxy:
+    build:
+      context: ./proxy
+    container_name: site-snoop-proxy
+    restart: always
+    networks:
+      - backend
+
+  adb-host:
+    build: ./adb-host
+    container_name: adb-host
+    depends_on:
+      - android-emulator
+    entrypoint: >
+      sh -c "
+        sleep 20 && \
+        adb connect android-emulator:5555 && \
+        adb devices && \
+        tail -f /dev/null
+      "
+    networks:
+      - backend
+
+networks:
+  backend:
