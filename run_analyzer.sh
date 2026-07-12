@@ -1,18 +1,10 @@
 #!/usr/bin/env bash
-# Запуск APK Analyzer через Docker.
-#
-# Usage:
-# ./run_analyzer.sh /path/to/app.apk # статика (по умолчанию)
-# ./run_analyzer.sh /path/to/app.apk --mode dynamic \
-# --package com.example # динамика
-# ./run_analyzer.sh /path/to/app.apk --mode full \
-# --package com.example # оба режима
-#
-# Опции после APK пробрасываются в main.py как есть (--mode/--package/--debug).
+# Запуск APK Analyzer через Docker (для Git Bash / Windows)
+
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
-  echo "Usage: ./run_analyzer.sh /path/to/file.apk [--mode static|dynamic|full] [--package <pkg>] [--emulator-host <host>]"
+  echo "Usage: ./run_analyzer.sh /path/to/file.apk [--mode static|dynamic|full] [--package <pkg>]"
   exit 1
 fi
 
@@ -20,6 +12,7 @@ APK_FILE="$1"
 shift
 EXTRA_ARGS=("$@")
 
+# Получаем полный путь к APK
 if command -v realpath >/dev/null 2>&1; then
   APK_FILE="$(realpath "$APK_FILE")"
 else
@@ -57,18 +50,18 @@ else
   exit 1
 fi
 
-# === Главное исправление: определяем как запускать docker ===
+# === Главное исправление для Git Bash ===
 if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]]; then
-  DOCKER_CMD="MSYS_NO_PATHCONV=1 docker"
+  DOCKER="MSYS_NO_PATHCONV=1 docker"
 else
-  DOCKER_CMD="docker"
+  DOCKER="docker"
 fi
 
 echo "Building image: $IMAGE_TAG (Dockerfile: $DOCKERFILE)"
-$DOCKER_CMD build -t "$IMAGE_TAG" -f "$SCRIPT_DIR/$DOCKERFILE" "$SCRIPT_DIR"
+$DOCKER build -t "$IMAGE_TAG" -f "$SCRIPT_DIR/$DOCKERFILE" "$SCRIPT_DIR"
 
 echo "Running analyzer..."
-$DOCKER_CMD run --rm \
+$DOCKER run --rm \
   -v "$DATA_DIR:/app/data" \
   -v "$APK_DIR:/app/input:ro" \
   -e EMULATOR_HOST="${EMULATOR_HOST:-android-emulator}" \
