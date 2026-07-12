@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 # Без Docker-сокета, без Java/apktool/jadx — только adb + frida
 ENV PYTHONDONTWRITEBYTECODE=1 \
