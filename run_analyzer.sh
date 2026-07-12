@@ -2,14 +2,13 @@
 # Запуск APK Analyzer через Docker.
 #
 # Usage:
-#   ./run_analyzer.sh /path/to/app.apk                         # статика (по умолчанию)
-#   ./run_analyzer.sh /path/to/app.apk --mode dynamic \
-#       --package com.example                                  # динамика
-#   ./run_analyzer.sh /path/to/app.apk --mode full \
-#       --package com.example                                  # оба режима
+# ./run_analyzer.sh /path/to/app.apk # статика (по умолчанию)
+# ./run_analyzer.sh /path/to/app.apk --mode dynamic \
+# --package com.example # динамика
+# ./run_analyzer.sh /path/to/app.apk --mode full \
+# --package com.example # оба режима
 #
 # Опции после APK пробрасываются в main.py как есть (--mode/--package/--debug).
-
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
@@ -36,10 +35,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_DIR="$SCRIPT_DIR/data"
 APK_DIR="$(dirname "$APK_FILE")"
 APK_NAME="$(basename "$APK_FILE")"
-
 mkdir -p "$DATA_DIR"
 
-# Определяем режим: выбираем Dockerfile по --mode (default: static)
+# Определяем режим
 MODE="static"
 for ((i=0; i<${#EXTRA_ARGS[@]}; i++)); do
   if [[ "${EXTRA_ARGS[$i]}" == "--mode" ]] && [[ $((i+1)) -lt ${#EXTRA_ARGS[@]} ]]; then
@@ -59,10 +57,18 @@ else
   exit 1
 fi
 
-echo "Building image: $IMAGE_TAG (Dockerfile: $DOCKERFILE)"
-docker build -t "$IMAGE_TAG" -f "$SCRIPT_DIR/$DOCKERFILE" "$SCRIPT_DIR"
+# === Главное исправление: определяем как запускать docker ===
+if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]]; then
+  DOCKER_CMD="MSYS_NO_PATHCONV=1 docker"
+else
+  DOCKER_CMD="docker"
+fi
 
-docker run --rm \
+echo "Building image: $IMAGE_TAG (Dockerfile: $DOCKERFILE)"
+$DOCKER_CMD build -t "$IMAGE_TAG" -f "$SCRIPT_DIR/$DOCKERFILE" "$SCRIPT_DIR"
+
+echo "Running analyzer..."
+$DOCKER_CMD run --rm \
   -v "$DATA_DIR:/app/data" \
   -v "$APK_DIR:/app/input:ro" \
   -e EMULATOR_HOST="${EMULATOR_HOST:-android-emulator}" \
