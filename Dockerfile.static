@@ -22,9 +22,14 @@ RUN curl -fsSL -o /usr/local/bin/apktool https://raw.githubusercontent.com/iBotP
     && curl -fsSL -o /usr/local/bin/apktool.jar https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_3.0.2.jar \
     && chmod +x /usr/local/bin/apktool
 
-RUN curl -fsSL -o /tmp/jadx.zip https://github.com/skylot/jadx/releases/download/v1.5.5/jadx-1.5.5.zip \
-    && unzip /tmp/jadx.zip -d /opt \
-    && ln -s /opt/jadx-1.5.5/bin/jadx /usr/local/bin/jadx \
+RUN curl -fsSL -o /tmp/jadx.zip https://github.com/skylot/jadx/releases/download/v1.4.7/jadx-1.4.7.zip \
+    && cd /tmp \
+    && unzip -q jadx.zip \
+    && mkdir -p /opt/jadx \
+    && mv /tmp/bin /opt/jadx/ \
+    && mv /tmp/lib /opt/jadx/ \
+    && chmod +x /opt/jadx/bin/jadx \
+    && ln -s /opt/jadx/bin/jadx /usr/local/bin/jadx \
     && rm /tmp/jadx.zip
 
 RUN pip install --no-cache-dir poetry==1.8.3
