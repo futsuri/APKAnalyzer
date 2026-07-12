@@ -11,6 +11,9 @@ python = "^3.11"
 markdown = "3.5.1"
 pyyaml = "6.0.1"
 python-dotenv = "1.0.0"
+# Динамический модуль (frida 17.x должен совпадать по мажор-версии с frida-server в эмуляторе)
+frida = "17.15.4"
+frida-tools = "14.10.4"
 
 [build-system]
 requires = ["poetry-core>=1.8.0"]

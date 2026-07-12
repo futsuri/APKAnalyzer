@@ -1,188 +1,257 @@
-import subprocess
-import time
+"""Управление Frida через python-биндинги (не subprocess+grep).
+
+- ``import frida`` выполняется **лениво** внутри методов, чтобы модуль
+  импортировался без установленной frida (важно для тестов статики и
+  импорта в ``main.py``).
+- Подключение к remote device (``frida.get_device_manager().add_remote_device``).
+- Spawn + attach **до** resume — ранние вызовы не теряются.
+"""
+
+from __future__ import annotations
+
+import json
 import logging
-from pathlib import Path
-from typing import List, Dict, Optional
+import os
+import time
+from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Исключения
+# ---------------------------------------------------------------------------
+
+class FridaError(Exception):
+    """Базовое исключение модуля Frida."""
+
+
+class FridaUnavailableError(FridaError):
+    """Библиотека frida не установлена."""
+
+
+class FridaServerNotReachable(FridaError):
+    """frida-server на устройстве не отвечает."""
+
+
+class ProcessAttachError(FridaError):
+    """Не удалось spawn/attach к процессу."""
+
+
+# ---------------------------------------------------------------------------
+# FridaManager
+# ---------------------------------------------------------------------------
+
 class FridaManager:
-    """Управление Frida-хуками"""
+    """Управление Frida-хуками через python API."""
 
-    def __init__(self):
-        logger.info("🔧 Инициализация FridaManager")
-        self.frida_version = self._get_frida_version()
-        self.device_serial = "emulator-5554"
-        logger.info(f"📱 Используется устройство: {self.device_serial}")
+    def __init__(
+        self,
+        host: Optional[str] = None,
+        port: int = 27042,
+    ):
+        self.host = host or os.getenv("EMULATOR_HOST", "android-emulator")
+        self.port = port
+        self._device = None
+        self._session = None
+        self._script = None
+        self._pid = None
+        self._messages: list[dict[str, Any]] = []
 
-    def _get_frida_version(self) -> Optional[str]:
-        """Проверяет, что Frida установлена"""
-        logger.info("🔍 Проверка версии Frida...")
+    # ------------------------------------------------------------------
+    # Ленивый import frida
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _import_frida():
+        """Ленивый импорт — не требует frida при import модуля."""
         try:
-            output = subprocess.check_output("frida --version", shell=True, text=True)
-            logger.info(f"✅ Frida версия: {output.strip()}")
-            return output.strip()
-        except Exception as e:
-            logger.error(f"❌ Frida не найдена: {e}")
-            logger.error("   Установите: pip install frida-tools")
-            return None
+            import frida
+            logger.debug("frida импортирована, версия: %s", frida.__version__)
+            return frida
+        except ImportError:
+            raise FridaUnavailableError(
+                "Модуль frida не установлен. pip install frida==17.15.4"
+            )
 
-    def _check_frida_server(self) -> bool:
-        """Проверяет, что Frida Server работает на устройстве"""
-        logger.info("🔍 Проверка Frida Server на устройстве...")
+    # ------------------------------------------------------------------
+    # Подключение
+    # ------------------------------------------------------------------
+
+    def connect(self) -> Any:
+        """Подключается к remote frida-server.
+
+        Returns:
+            frida.Device — объект подключённого устройства.
+        Raises:
+            FridaUnavailableError: frida не установлена.
+            FridaServerNotReachable: frida-server не отвечает.
+        """
+        frida_mod = self._import_frida()
+
         try:
-            # Проверяем через frida-ps
-            output = subprocess.check_output("frida-ps -U", shell=True, text=True, timeout=5)
-            logger.info(f"✅ Frida Server работает, найдено процессов: {len(output.splitlines())}")
-            return True
-        except subprocess.TimeoutExpired:
-            logger.error("❌ Таймаут при проверке Frida Server")
-            return False
+            mgr = frida_mod.get_device_manager()
+            addr = f"{self.host}:{self.port}"
+            logger.info("Подключение к frida-server: %s", addr)
+            device = mgr.add_remote_device(addr)
+            # Проверяем, что устройство отвечает
+            _ = device.enumerate_processes()
+            self._device = device
+            logger.info("Frida подключена к %s", addr)
+            return device
+        except frida_mod.TransportError as e:
+            raise FridaServerNotReachable(
+                f"frida-server на {self.host}:{self.port} не отвечает: {e}"
+            )
         except Exception as e:
-            logger.error(f"❌ Frida Server не отвечает: {e}")
-            logger.info("   Запустите Frida Server на эмуляторе:")
-            logger.info("   adb shell /data/local/tmp/frida-server &")
-            return False
+            raise FridaServerNotReachable(
+                f"Ошибка подключения к frida: {e}"
+            )
 
-    def _get_process_pid(self, package_name: str) -> Optional[int]:
-        """Находит PID процесса по имени пакета"""
-        logger.info(f"🔍 Поиск PID для {package_name}...")
+    # ------------------------------------------------------------------
+    # Spawn + Attach (Frida прикрепляется ДО старта приложения)
+    # ------------------------------------------------------------------
+
+    def spawn_and_attach(
+        self,
+        package: str,
+        script_source: str,
+        on_message: Optional[Callable] = None,
+    ) -> tuple:
+        """Spawn процесса, attach скрипта, return (session, script, pid).
+
+        Приложение после spawn остаётся **в состоянии suspended** — caller
+        должен вызвать ``device.resume(pid)`` после настройки.
+
+        Args:
+            package: имя пакета приложения.
+            script_source: JS-код хуков.
+            on_message: callback для сообщений скрипта (по умолчанию —
+                        внутренний сбор в self._messages).
+
+        Returns:
+            (session, script, pid)
+        Raises:
+            ProcessAttachError: не удалось spawn/attach.
+        """
+        frida_mod = self._import_frida()
+        self._messages = []
+
+        if not self._device:
+            self.connect()
+
+        device = self._device
+
+        # 1. Spawn
         try:
-            cmd = f"adb -s {self.device_serial} shell ps"
-            logger.debug(f"   Команда: {cmd}")
-            output = subprocess.check_output(cmd, shell=True, text=True)
-            logger.debug(f"   Получено {len(output.splitlines())} строк")
-            
-            for line in output.split('\n'):
-                if package_name in line:
-                    parts = line.split()
-                    if len(parts) >= 2:
-                        pid = int(parts[1])
-                        logger.info(f"✅ Найден PID {pid} для {package_name}")
-                        logger.debug(f"   Строка: {line}")
-                        return pid
-            logger.warning(f"⚠️ Процесс {package_name} не найден в выводе ps")
-            return None
+            logger.info("Spawn: %s", package)
+            pid = device.spawn([package])
+            self._pid = pid
+            logger.info("PID: %d", pid)
         except Exception as e:
-            logger.error(f"❌ Ошибка поиска PID: {e}")
-            return None
+            raise ProcessAttachError(f"Не удалось spawn {package}: {e}")
 
-    def run_hook(self, package_name: str, script_path: Path, timeout: int = 60) -> List[Dict]:
-        """Запускает Frida-скрипт на приложении"""
-        logger.info("=" * 50)
-        logger.info("🎣 ЗАПУСК FRIDA")
-        logger.info(f"📦 Package: {package_name}")
-        logger.info(f"📜 Script: {script_path}")
-        logger.info("=" * 50)
-
-        # Проверка 1: Frida установлена
-        if not self.frida_version:
-            logger.error("❌ Frida не установлена")
-            return []
-
-        # Проверка 2: Frida Server работает
-        if not self._check_frida_server():
-            logger.error("❌ Frida Server не работает")
-            return []
-
-        # Проверка 3: Запуск приложения через ADB
-        logger.info(f"📱 Запуск приложения {package_name} через ADB...")
+        # 2. Attach
         try:
-            cmd = f"adb -s {self.device_serial} shell monkey -p {package_name} 1"
-            logger.debug(f"   Команда: {cmd}")
-            output = subprocess.check_output(cmd, shell=True, text=True)
-            logger.info(f"✅ Приложение запущено")
-            logger.debug(f"   Вывод: {output}")
-            time.sleep(5)
+            logger.info("Attach к PID %d", pid)
+            session = device.attach(pid)
+            self._session = session
         except Exception as e:
-            logger.error(f"❌ Не удалось запустить приложение: {e}")
-            return []
+            raise ProcessAttachError(f"Не удалось attach к PID {pid}: {e}")
 
-        # Проверка 4: Поиск PID
-        pid = self._get_process_pid(package_name)
-        if not pid:
-            logger.error(f"❌ Процесс {package_name} не найден")
-            logger.info("   Проверьте, что приложение действительно запущено:")
-            logger.info(f"   adb -s {self.device_serial} shell ps | grep {package_name}")
-            return []
+        # 3. Create script
+        def _default_handler(message, data):
+            self._handle_message(message, data)
 
-        # Проверка 5: Проверка скрипта
-        if not script_path.exists():
-            logger.error(f"❌ Frida скрипт не найден: {script_path}")
-            return []
+        handler = on_message or _default_handler
 
-        # Проверка 6: Запуск Frida
-        logger.info(f"🔗 Подключение к PID: {pid}")
-        cmd = [
-            "frida", "-U",
-            "-p", str(pid),
-            "-l", str(script_path),
-            "--no-pause"
-        ]
-        logger.debug(f"   Команда: {' '.join(cmd)}")
-        
         try:
-            logger.info("⏳ Ожидание вывода Frida...")
-            output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=timeout, text=True)
-            logger.info(f"✅ Frida завершилась, получено {len(output)} символов")
-            
-            # Проверка: есть ли хуки в выводе
-            if "[*] Frida hooks started" in output:
-                logger.info("✅ Хуки успешно установлены")
-            else:
-                logger.warning("⚠️ Хуки не были установлены (возможно, скрипт не выполнился)")
-            
-            # Проверка: есть ли найденные идентификаторы
-            identifiers = self._parse_frida_output(output)
-            if identifiers:
-                logger.info(f"✅ Найдено {len(identifiers)} идентификаторов")
-                for i in identifiers[:3]:
-                    logger.info(f"   - {i['type']}: {i['value'][:50]}")
-            else:
-                logger.warning("⚠️ Идентификаторы не найдены")
-                logger.info("   Возможно, приложение не вызывало API во время анализа")
-            
-            return identifiers
-            
-        except subprocess.TimeoutExpired:
-            logger.error(f"⏱️ Frida превысила время ожидания ({timeout}с)")
-            logger.info("   Попробуйте увеличить таймаут или выполнить действия вручную")
-            return []
-            
-        except subprocess.CalledProcessError as e:
-            logger.error(f"❌ Ошибка Frida (код {e.returncode})")
-            if e.output:
-                logger.error(f"   Вывод: {e.output[:500]}")
-            return []
-            
+            script = session.create_script(script_source)
+            script.on("message", handler)
+            script.load()
+            self._script = script
+            logger.info("Frida-скрипт загружен, хуки установлены")
         except Exception as e:
-            logger.error(f"❌ Неизвестная ошибка Frida: {e}")
-            return []
+            raise ProcessAttachError(f"Не удалось загрузить скрипт: {e}")
 
-    def _parse_frida_output(self, output: str) -> List[Dict]:
-        """Парсит вывод Frida в структурированный формат"""
-        logger.info("🔍 Парсинг вывода Frida...")
-        identifiers = []
-        id_types = ["IMEI", "ANDROID_ID", "MAC", "IMSI", "SERIAL", "PHONE", "FINGERPRINT"]
+        return session, script, pid
 
-        lines = output.split('\n')
-        logger.debug(f"   Всего строк: {len(lines)}")
-        
-        for line in lines:
-            for id_type in id_types:
-                if id_type in line and ']' in line:
-                    parts = line.split(']', 1)
-                    if len(parts) > 1:
-                        value = parts[1].strip()
-                        if value and value != "null" and value != "undefined":
-                            identifiers.append({
-                                "type": id_type,
-                                "value": value,
-                                "source": "Frida Hook",
-                                "timestamp": time.time()
-                            })
-                            logger.debug(f"   Найден {id_type}: {value}")
-        
-        logger.info(f"✅ Найдено {len(identifiers)} идентификаторов в выводе")
-        return identifiers
+    def resume(self, pid: Optional[int] = None) -> None:
+        """Resume spawn'нутого процесса (приложение начинает работу)."""
+        if not self._device:
+            return
+        target_pid = pid or self._pid
+        if target_pid:
+            try:
+                self._device.resume(target_pid)
+                logger.info("Process resumed: PID %d", target_pid)
+            except Exception as e:
+                logger.error("Не удалось resume PID %d: %s", target_pid, e)
+
+    # ------------------------------------------------------------------
+    # Сбор сообщений
+    # ------------------------------------------------------------------
+
+    def _handle_message(self, message: dict, data: bytes) -> None:
+        """Обработчик сообщений от Frida-скрипта."""
+        if message.get("type") == "send":
+            try:
+                payload = message.get("payload")
+                if isinstance(payload, dict):
+                    self._messages.append(payload)
+                    logger.debug(
+                        "Frida message: %s = %s",
+                        payload.get("identifier_id"),
+                        str(payload.get("value", ""))[:60],
+                    )
+            except Exception as e:
+                logger.warning("Ошибка парсинга payload: %s", e)
+        elif message.get("type") == "error":
+            logger.warning("Frida script error: %s", message.get("description", "")[:200])
+        else:
+            logger.debug("Frida message (type=%s): %s",
+                         message.get("type"), str(message)[:200])
+
+    def get_messages(self) -> list[dict[str, Any]]:
+        """Возвращает накопленные сообщения."""
+        return list(self._messages)
+
+    def collect(self, timeout: float = 60.0) -> list[dict[str, Any]]:
+        """Собирает сообщения в течение timeout, затем возвращает."""
+        self._messages = []
+        time.sleep(timeout)
+        return self.get_messages()
+
+    # ------------------------------------------------------------------
+    # Очистка
+    # ------------------------------------------------------------------
+
+    def disconnect(self) -> None:
+        """Корректная очистка session/script."""
+        try:
+            if self._script:
+                self._script.unload()
+                self._script = None
+        except Exception as e:
+            logger.debug("Ошибка unload скрипта: %s", e)
+
+        try:
+            if self._session:
+                self._session.detach()
+                self._session = None
+        except Exception as e:
+            logger.debug("Ошибка detach: %s", e)
+
+        try:
+            if self._pid and self._device:
+                try:
+                    self._device.kill(self._pid)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        self._device = None
+        self._pid = None
+        self._messages = []
+        logger.info("Frida: отключение завершено")

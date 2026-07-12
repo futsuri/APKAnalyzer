@@ -1,172 +1,203 @@
-import logging
-import json
-import time
-from pathlib import Path
-from typing import Dict, List, Optional
-from datetime import datetime
+"""Главный оркестратор динамического анализа.
 
-from .emulator_controller import EmulatorController
-from .frida_manager import FridaManager
+Результат — ``{identifier_id: Finding}``, совместимый со статикой.
+Ошибки собираются в ``errors``, pipeline не падает исключением наружу.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import time
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Optional
+
+from src.core.config import DYNAMIC_OUTPUT_DIR, TEMP_DIR
+from src.dynamic.emulator_controller import (
+    AdbConnectionError,
+    ApkInstallError,
+    DeviceNotReadyError,
+    EmulatorController,
+    EmulatorError,
+)
+from src.dynamic.finding_builder import build_findings, collect_raw_values
+from src.dynamic.frida_manager import (
+    FridaError,
+    FridaServerNotReachable,
+    FridaUnavailableError,
+    FridaManager,
+    ProcessAttachError,
+)
+from src.dynamic.hook_generator import generate_hook_script, save_hook_script
+from src.dynamic.runner import MonkeyRunner
+from src.static.catalog import load_identifiers_catalog
 
 logger = logging.getLogger(__name__)
 
 
+class _AbortPipeline(Exception):
+    """Внутренний sentinel: ранний выход из pipeline без исключения наружу."""
+
+
+# ---------------------------------------------------------------------------
+# Результат оркестратора
+# ---------------------------------------------------------------------------
+
+@dataclass
+class DynamicResult:
+    """Результат динамического анализа."""
+    apk: str = ""
+    package: str = ""
+    timestamp: str = ""
+    findings: dict[str, Any] = field(default_factory=dict)  # {identifier_id: Finding}
+    raw_values: dict[str, list[str]] = field(default_factory=dict)
+    raw_values_path: Optional[Path] = None
+    errors: list[str] = field(default_factory=list)
+    logcat: list[str] = field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# DynamicOrchestrator
+# ---------------------------------------------------------------------------
+
 class DynamicOrchestrator:
-    """Главный оркестратор динамического анализа"""
+    """Оркестратор динамического анализа APK."""
 
-    def __init__(self, container_name: str = "android-emulator"):
-        logger.info("🔧 Инициализация DynamicOrchestrator")
-        self.emulator = EmulatorController(container_name)
-        self.frida = FridaManager()
-        self.results = {
-            "timestamp": None,
-            "apk": None,
-            "package": None,
-            "identifiers": [],
-            "logcat": [],
-            "errors": []
-        }
-        logger.info(f"📱 Используется контейнер: {container_name}")
+    def __init__(
+        self,
+        catalog: Optional[list] = None,
+        emulator_host: Optional[str] = None,
+        runner=None,
+        frida_timeout: float = 60.0,
+    ):
+        self.catalog = catalog or load_identifiers_catalog()
+        self.emulator = EmulatorController(host=emulator_host)
+        self.frida = FridaManager(host=emulator_host)
+        self.runner = runner or MonkeyRunner()
+        self.frida_timeout = frida_timeout
 
-    def run_analysis(self, apk_path: Path, package_name: str) -> Dict:
-        """Запускает полный динамический анализ"""
+    def run(self, apk_path: Path, package_name: str) -> DynamicResult:
+        """Запускает полный динамический анализ.
+
+        Pipeline не падает исключением — все ошибки собираются в
+        ``DynamicResult.errors``.
+        """
+        result = DynamicResult(
+            apk=str(apk_path),
+            package=package_name,
+            timestamp=datetime.now().isoformat(),
+        )
+
         logger.info("=" * 60)
-        logger.info("🚀 ЗАПУСК ДИНАМИЧЕСКОГО АНАЛИЗА")
-        logger.info(f"📱 APK: {apk_path}")
-        logger.info(f"📦 Package: {package_name}")
+        logger.info("ДИНАМИЧЕСКИЙ АНАЛИЗ: %s (%s)", apk_path.name, package_name)
         logger.info("=" * 60)
 
-        self.results["timestamp"] = datetime.now().isoformat()
-        self.results["apk"] = str(apk_path)
-        self.results["package"] = package_name
+        messages: list[dict[str, Any]] = []
 
         try:
             # 1. Подключение к эмулятору
-            if not self.emulator.connect():
-                self.results["errors"].append("Не удалось подключиться к эмулятору")
-                return self.results
-
-            # 2. Проверка готовности устройства
-            if not self._wait_for_device():
-                self.results["errors"].append("Устройство не готово")
-                return self.results
-
-            # 3. Очистка логов
-            self.emulator.clear_logcat()
-
-            # 4. Установка APK
-            if not self.emulator.install_apk(apk_path):
-                self.results["errors"].append("Не удалось установить APK")
-                return self.results
-
-            # 5. Запуск приложения
-            if not self.emulator.start_app(package_name):
-                self.results["errors"].append("Не удалось запустить приложение")
-                return self.results
-
-            # 6. Ожидание загрузки приложения
-            time.sleep(5)
-
-            # 7. Запуск Frida
-            script_path = Path(__file__).parent / "scripts" / "hook_identifiers.js"
-            if script_path.exists():
-                frida_results = self.frida.run_hook(package_name, script_path, timeout=60)
-                self.results["identifiers"] = frida_results
-                logger.info(f"✅ Найдено {len(frida_results)} идентификаторов")
-            else:
-                logger.warning(f"⚠️ Frida скрипт не найден: {script_path}")
-
-            # 8. Сбор логов
-            logcat = self.emulator.get_logcat(lines=300)
-            self.results["logcat"] = logcat.split('\n')
-
-            # 9. Закрытие приложения
-            self.emulator.stop_app(package_name)
-
-            # 10. Отключение
-            self.emulator.adb_connected = False
-
-            logger.info("=" * 60)
-            logger.info(f"✅ АНАЛИЗ ЗАВЕРШЁН. Найдено: {len(self.results['identifiers'])}")
-            logger.info("=" * 60)
-
-            return self.results
-
-        except Exception as e:
-            logger.error(f"❌ Ошибка: {e}")
-            self.results["errors"].append(str(e))
-            return self.results
-
-    def _wait_for_device(self, timeout: int = 60) -> bool:
-        """Ожидает готовности устройства"""
-        logger.info(f"⏳ Ожидание устройства (таймаут {timeout}с)...")
-        start = time.time()
-        while time.time() - start < timeout:
             try:
-                # Проверяем, что устройство готово через docker exec
-                import subprocess
-                cmd = f'docker exec {self.emulator.container_name} adb shell getprop sys.boot_completed'
-                result = subprocess.check_output(cmd, shell=True, text=True)
-                if result.strip() == "1":
-                    logger.info("✅ Устройство готово")
-                    return True
+                self.emulator.connect()
+            except (AdbConnectionError, EmulatorError) as e:
+                result.errors.append(f"Подключение к эмулятору: {e}")
+                raise _AbortPipeline
+
+            # 2. Ожидание загрузки
+            try:
+                self.emulator.wait_for_boot()
+            except (DeviceNotReadyError, EmulatorError) as e:
+                result.errors.append(f"Ожидание устройства: {e}")
+                raise _AbortPipeline
+
+            # 3. Установка APK
+            try:
+                self.emulator.install_apk(apk_path)
+            except (ApkInstallError, EmulatorError) as e:
+                result.errors.append(f"Установка APK: {e}")
+                raise _AbortPipeline
+
+            # 4. Генерация хуков из каталога
+            script_source = generate_hook_script(self.catalog)
+            script_path = TEMP_DIR / "frida_hooks_generated.js"
+            save_hook_script(script_source, script_path)
+
+            # 5. Spawn + Attach Frida (ДО старта приложения!)
+            pid = None
+            try:
+                _, _, pid = self.frida.spawn_and_attach(package_name, script_source)
+                self.frida.resume(pid)
+                logger.info("Frida attached (PID %d), приложение запущено", pid)
+            except (FridaUnavailableError, FridaServerNotReachable,
+                    ProcessAttachError, FridaError) as e:
+                result.errors.append(f"Frida: {e}")
+                # Пытаемся запустить приложение без Frida
+                try:
+                    self.emulator.start_app(package_name)
+                except EmulatorError:
+                    pass
+                raise _AbortPipeline
+
+            # 6. Monkey-прогон (Frida уже хукает)
+            try:
+                self.runner.run(self.emulator, package_name)
             except Exception as e:
-                logger.debug(f"   Ожидание... {str(e)[:50]}")
-            time.sleep(2)
-        logger.error("❌ Таймаут ожидания устройства")
-        return False
+                result.errors.append(f"Monkey-прогон: {e}")
 
-    def save_results(self, output_dir: Path) -> Path:
-        """Сохраняет результаты в JSON"""
-        output_dir.mkdir(parents=True, exist_ok=True)
-        filename = f"dynamic_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        filepath = output_dir / filename
+            # 7. Сбор сообщений
+            time.sleep(2)  # финальный flush
+            messages = self.frida.get_messages()
+            logger.info("Собрано %d Frida-сообщений", len(messages))
 
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(self.results, f, indent=2, default=str, ensure_ascii=False)
+            # 8. Сбор logcat
+            try:
+                logcat = self.emulator.get_logcat()
+                result.logcat = logcat.split("\n") if logcat else []
+            except EmulatorError:
+                pass
 
-        logger.info(f"💾 Результаты сохранены: {filepath}")
+        except _AbortPipeline:
+            logger.info("Pipeline прерван на раннем этапе (ошибки в result.errors)")
+        finally:
+            # ВСЕГДА строим findings из каталога (с пустыми messages — все found=False)
+            result.findings = build_findings(messages, self.catalog)
+            result.raw_values = collect_raw_values(messages)
+
+            # Остановка и очистка
+            try:
+                self.emulator.stop_app(package_name)
+            except Exception:
+                pass
+
+            try:
+                self.frida.disconnect()
+            except Exception as e:
+                logger.debug("Ошибка отключения Frida: %s", e)
+
+            # Сохраняем немаскированные значения в технический файл
+            if result.raw_values:
+                raw_path = self._save_raw_values(result)
+                result.raw_values_path = raw_path
+
+        found_count = sum(1 for f in result.findings.values() if f.found)
+        logger.info("Найдено идентификаторов: %d/%d", found_count, len(self.catalog))
+
+        logger.info("=" * 60)
+        logger.info("АНАЛИЗ ЗАВЕРШЁН: найдено %d, ошибок %d",
+                     found_count, len(result.errors))
+        logger.info("=" * 60)
+
+        return result
+
+    def _save_raw_values(self, result: DynamicResult) -> Path:
+        """Сохраняет немаскированные значения в технический JSON."""
+        DYNAMIC_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        filename = f"{Path(result.apk).stem}_raw_values.json"
+        filepath = DYNAMIC_OUTPUT_DIR / filename
+
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(result.raw_values, f, indent=2, ensure_ascii=False)
+
+        logger.info("Немаскированные значения: %s", filepath)
         return filepath
-
-    def generate_summary(self) -> Dict:
-        """Генерирует краткую сводку по результатам"""
-        return {
-            "total_identifiers": len(self.results["identifiers"]),
-            "identifier_types": list(set([i["type"] for i in self.results["identifiers"]])),
-            "errors": self.results["errors"],
-            "apk": self.results["apk"],
-            "package": self.results["package"],
-            "timestamp": self.results["timestamp"]
-        }
-
-    def _run_automation_scenario(self, package_name: str):
-        """Автоматизированный сценарий для Signal"""
-        logger.info("🔄 Запуск автоматизации...")
-        time.sleep(2)
-
-        # Ввод номера телефона
-        logger.info("📱 Ввод номера телефона...")
-        self.emulator.tap(540, 800)
-        time.sleep(1)
-        self.emulator.input_text("+79998887766")
-        time.sleep(1)
-        self.emulator.tap(540, 1500)
-        time.sleep(3)
-
-        # Открытие меню
-        logger.info("☰ Открытие меню...")
-        self.emulator.tap(900, 100)
-        time.sleep(1)
-
-        # Настройки
-        logger.info("⚙️ Открытие настроек...")
-        self.emulator.tap(540, 400)
-        time.sleep(2)
-        self.emulator.swipe(540, 1200, 540, 500, 300)
-        time.sleep(1)
-
-        # Возврат
-        self.emulator.tap(100, 100)
-        time.sleep(1)
-
-        logger.info("✅ Автоматизация завершена")

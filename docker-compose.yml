@@ -1,0 +1,56 @@
+# APK Analyzer — полный стек.
+#
+# Включает эмуляторный стек (android-emulator + proxy) из
+# docker/android-emulator-1-main/docker-compose.yml и добавляет сервисы
+# apk-analyzer-static и apk-analyzer-dynamic.
+#
+# Сервисы независимы: падение dynamic (или эмулятора) не роняет static.
+#
+# Запуск:
+#   docker compose up                          # весь стек
+#   docker compose up apk-analyzer-static      # только статика
+#   docker compose run --rm apk-analyzer-dynamic \
+#       --mode dynamic --package com.example app.apk
+#
+# compose v2.20+ (директива include).
+
+include:
+  - path: docker/android-emulator-1-main/docker-compose.yml
+
+services:
+  apk-analyzer-static:
+    build:
+      context: .
+      dockerfile: Dockerfile.static
+    container_name: apk-analyzer-static
+    # Без depends_on — статика не зависит от эмулятора
+    volumes:
+      - ./data:/app/data
+      # APK монтируется через /app/input (см. run_analyzer.sh)
+    networks:
+      - backend
+    # По умолчанию запускаем статический анализ; APK передаётся аргументом.
+    # При `docker compose up` без команды — idle, чтобы сервис не падал.
+    command: ["--help"]
+
+  apk-analyzer-dynamic:
+    build:
+      context: .
+      dockerfile: Dockerfile.dynamic
+    container_name: apk-analyzer-dynamic
+    depends_on:
+      - android-emulator
+    environment:
+      - EMULATOR_HOST=android-emulator
+    volumes:
+      - ./data:/app/data
+    networks:
+      - backend
+    # Ограниченный restart — не бесконечный луп. 3 попытки.
+    restart: "on-failure:3"
+    # Динамический анализ запускается явно (нужны --mode/--package + APK).
+    # При `docker compose up` без команды — idle.
+    command: ["--help"]
+
+# Сеть `backend` объявлена в docker/android-emulator-1-main/docker-compose.yml
+# (подключён через include). Сервисы анализатора просто подключаются к ней.
