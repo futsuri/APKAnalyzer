@@ -1,19 +1,10 @@
 #!/usr/bin/env bash
-# Запуск APK Analyzer через Docker.
-#
-# Usage:
-#   ./run_analyzer.sh /path/to/app.apk                         # статика (по умолчанию)
-#   ./run_analyzer.sh /path/to/app.apk --mode dynamic \
-#       --package com.example                                  # динамика
-#   ./run_analyzer.sh /path/to/app.apk --mode full \
-#       --package com.example                                  # оба режима
-#
-# Опции после APK пробрасываются в main.py как есть (--mode/--package/--debug).
+# Запуск APK Analyzer через Docker (для Git Bash / Windows)
 
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
-  echo "Usage: ./run_analyzer.sh /path/to/file.apk [--mode static|dynamic|full] [--package <pkg>] [--emulator-host <host>]"
+  echo "Usage: ./run_analyzer.sh /path/to/file.apk [--mode static|dynamic|full] [--package <pkg>]"
   exit 1
 fi
 
@@ -21,6 +12,7 @@ APK_FILE="$1"
 shift
 EXTRA_ARGS=("$@")
 
+# Получаем полный путь к APK
 if command -v realpath >/dev/null 2>&1; then
   APK_FILE="$(realpath "$APK_FILE")"
 else
@@ -36,10 +28,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_DIR="$SCRIPT_DIR/data"
 APK_DIR="$(dirname "$APK_FILE")"
 APK_NAME="$(basename "$APK_FILE")"
-
 mkdir -p "$DATA_DIR"
 
-# Определяем режим: выбираем Dockerfile по --mode (default: static)
+# Определяем режим
 MODE="static"
 for ((i=0; i<${#EXTRA_ARGS[@]}; i++)); do
   if [[ "${EXTRA_ARGS[$i]}" == "--mode" ]] && [[ $((i+1)) -lt ${#EXTRA_ARGS[@]} ]]; then
@@ -59,10 +50,18 @@ else
   exit 1
 fi
 
-echo "Building image: $IMAGE_TAG (Dockerfile: $DOCKERFILE)"
-docker build -t "$IMAGE_TAG" -f "$SCRIPT_DIR/$DOCKERFILE" "$SCRIPT_DIR"
+# === Главное исправление для Git Bash ===
+if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]]; then
+  DOCKER="MSYS_NO_PATHCONV=1 docker"
+else
+  DOCKER="docker"
+fi
 
-docker run --rm \
+echo "Building image: $IMAGE_TAG (Dockerfile: $DOCKERFILE)"
+$DOCKER build -t "$IMAGE_TAG" -f "$SCRIPT_DIR/$DOCKERFILE" "$SCRIPT_DIR"
+
+echo "Running analyzer..."
+$DOCKER run --rm \
   -v "$DATA_DIR:/app/data" \
   -v "$APK_DIR:/app/input:ro" \
   -e EMULATOR_HOST="${EMULATOR_HOST:-android-emulator}" \
