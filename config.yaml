@@ -8,3 +8,8 @@ tools:
 analysis:
   timeout: 300  # секунд
   max_libraries: 50
+  # Настройки jadx (отдельно от общего timeout, т.к. jadx - самый тяжёлый этап)
+jadx:
+  threads: 4          # -j, параллельная обработка классов вместо однопоточной
+  primary_timeout: 420   # первая попытка, с --show-bad-code
+  fallback_timeout: 300  # вторая попытка (fallback), без --show-bad-code, быстрее

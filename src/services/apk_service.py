@@ -4,7 +4,15 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from src.core.config import APKTOOL_PATH, JADX_PATH, MAX_LIBRARIES, TIMEOUT
+from src.core.config import (
+    APKTOOL_PATH,
+    JADX_FALLBACK_TIMEOUT,
+    JADX_PATH,
+    JADX_PRIMARY_TIMEOUT,
+    JADX_THREADS,
+    MAX_LIBRARIES,
+    TIMEOUT,
+)
 from src.models.analysis import AnalysisResult, Finding, Secret
 from src.static.catalog import load_identifiers_catalog
 from src.static.detectors.identifier_detector import IdentifierDetector
@@ -103,21 +111,59 @@ class ApkService:
 
     def _run_jadx(self) -> Path:
         output_dir = self.temp_dir / "jadx_output"
-        cmd = [JADX_PATH, str(self.apk_path), "-d", str(output_dir), "--show-bad-code"]
-        logger.info(f"Запуск: {' '.join(cmd)}")
 
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=TIMEOUT * 2)
-            if result.returncode != 0:
-                logger.warning(f"jadx предупреждение: {result.stderr}")
-            else:
-                logger.info("jadx выполнен успешно")
-        except subprocess.TimeoutExpired:
-            logger.error(f"jadx превысил время ожидания ({TIMEOUT * 2}с)")
-        except Exception as error:
-            logger.error(f"Ошибка при запуске jadx: {error}")
+        # Первая попытка: полная точность (--show-bad-code), но в несколько
+        # потоков и с укороченным таймаутом. --show-bad-code иногда заставляет
+        # jadx застревать на одном патологическом классе/методе (характерно
+        # для крупных protobuf-приложений вроде Signal) — тогда однопоточный
+        # прогон с большим таймаутом просто впустую ждёт весь лимит.
+        primary_cmd = [
+            JADX_PATH,
+            str(self.apk_path),
+            "-d",
+            str(output_dir),
+            "-j",
+            str(JADX_THREADS),
+            "--show-bad-code",
+        ]
+        if self._try_run_jadx(primary_cmd, JADX_PRIMARY_TIMEOUT, "основной"):
+            return output_dir
+
+        # Fallback: без --show-bad-code jadx намного быстрее сдаётся на
+        # проблемном коде (просто помечает метод как нерасшифрованный вместо
+        # попытки его дорисовать), поэтому вероятность повторного зависания
+        # на том же месте существенно ниже. Выходную директорию чистим,
+        # чтобы не смешивать частичный результат первой попытки со второй.
+        shutil.rmtree(output_dir, ignore_errors=True)
+        fallback_cmd = [
+            JADX_PATH,
+            str(self.apk_path),
+            "-d",
+            str(output_dir),
+            "-j",
+            str(JADX_THREADS),
+        ]
+        self._try_run_jadx(fallback_cmd, JADX_FALLBACK_TIMEOUT, "fallback (без --show-bad-code)")
 
         return output_dir
+
+    def _try_run_jadx(self, cmd: list, timeout: int, label: str) -> bool:
+        """Запускает jadx с заданными параметрами. Возвращает True при успехе."""
+        logger.info(f"Запуск jadx ({label}, timeout={timeout}с): {' '.join(cmd)}")
+
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+            if result.returncode != 0:
+                logger.warning(f"jadx ({label}) предупреждение: {result.stderr}")
+                return False
+            logger.info(f"jadx ({label}) выполнен успешно")
+            return True
+        except subprocess.TimeoutExpired:
+            logger.error(f"jadx ({label}) превысил время ожидания ({timeout}с)")
+            return False
+        except Exception as error:
+            logger.error(f"Ошибка при запуске jadx ({label}): {error}")
+            return False
 
     def _collect_libraries(self, source_dir: Path) -> list:
         libs = set()
