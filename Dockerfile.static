@@ -23,7 +23,8 @@ RUN curl -fsSL -o /usr/local/bin/apktool https://raw.githubusercontent.com/iBotP
     && chmod +x /usr/local/bin/apktool
 
 RUN curl -fsSL -o /tmp/jadx.zip https://github.com/skylot/jadx/releases/download/v1.5.5/jadx-1.5.5.zip \
-    && unzip /tmp/jadx.zip -d /opt \
+    && unzip /tmp/jadx.zip -d /opt/jadx-1.5.5 \
+    && chmod +x /opt/jadx-1.5.5/bin/jadx \
     && ln -s /opt/jadx-1.5.5/bin/jadx /usr/local/bin/jadx \
     && rm /tmp/jadx.zip
 
