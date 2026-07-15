@@ -1,0 +1,321 @@
+/* ===== RESET & BASE ===== */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+    background: #f0f2f5;
+    color: #2d3748;
+    min-height: 100vh;
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* ===== HEADER ===== */
+header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 16px;
+    padding: 30px;
+    color: white;
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+header h1 {
+    font-size: 2.2em;
+    margin-bottom: 5px;
+}
+
+header p {
+    font-size: 1.1em;
+    opacity: 0.9;
+}
+
+.docker-status {
+    display: inline-block;
+    margin-top: 12px;
+    padding: 6px 20px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 20px;
+    font-size: 14px;
+}
+
+/* ===== SECTIONS ===== */
+section {
+    background: white;
+    border-radius: 12px;
+    padding: 25px 30px;
+    margin-bottom: 25px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+}
+
+section h2 {
+    font-size: 1.3em;
+    margin-bottom: 18px;
+    color: #2c3e50;
+    border-bottom: 2px solid #e2e8f0;
+    padding-bottom: 10px;
+}
+
+section h3 {
+    font-size: 1.1em;
+    margin-bottom: 15px;
+    color: #2c3e50;
+}
+
+/* ===== DROP ZONE ===== */
+.drop-zone {
+    border: 2px dashed #cbd5e0;
+    border-radius: 12px;
+    padding: 40px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s;
+    background: #fafafa;
+}
+
+.drop-zone:hover {
+    border-color: #667eea;
+    background: #f7fafc;
+}
+
+.drop-zone.dragover {
+    border-color: #48bb78;
+    background: #f0fff4;
+}
+
+.drop-zone p {
+    color: #718096;
+    font-size: 16px;
+    margin-bottom: 6px;
+}
+
+.drop-zone .hint {
+    font-size: 13px;
+    color: #a0aec0;
+}
+
+.file-info {
+    margin-top: 12px;
+    padding: 10px 16px;
+    background: #ebf8ff;
+    border-radius: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.file-info .name {
+    font-weight: 600;
+    color: #2b6cb0;
+}
+
+.file-info .size {
+    color: #718096;
+    font-size: 14px;
+}
+
+/* ===== BUTTONS ===== */
+.btn {
+    display: inline-block;
+    padding: 10px 24px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    text-decoration: none;
+}
+
+.btn-primary {
+    background: #667eea;
+    color: white;
+}
+.btn-primary:hover {
+    background: #5a67d8;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.btn-success {
+    background: #48bb78;
+    color: white;
+}
+.btn-success:hover {
+    background: #38a169;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(72, 187, 120, 0.4);
+}
+
+.btn-danger {
+    background: #fc8181;
+    color: white;
+}
+.btn-danger:hover {
+    background: #e53e3e;
+}
+
+.btn-small {
+    padding: 4px 12px;
+    font-size: 12px;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none !important;
+}
+
+/* ===== SETTINGS ===== */
+.form-group {
+    margin-bottom: 18px;
+}
+
+.form-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: #2d3748;
+}
+
+.radio-group {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.radio-group label {
+    font-weight: normal;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.radio-group input[type="radio"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+.form-group input[type="text"] {
+    width: 100%;
+    padding: 10px 14px;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 14px;
+    transition: border-color 0.3s;
+}
+
+.form-group input[type="text"]:focus {
+    border-color: #667eea;
+    outline: none;
+}
+
+.form-group .hint {
+    display: block;
+    font-size: 12px;
+    color: #a0aec0;
+    margin-top: 4px;
+}
+
+/* ===== PROGRESS ===== */
+.progress-bar {
+    width: 100%;
+    height: 12px;
+    background: #e2e8f0;
+    border-radius: 6px;
+    overflow: hidden;
+    margin: 10px 0 12px;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #48bb78, #667eea);
+    border-radius: 6px;
+    transition: width 0.5s ease;
+    width: 0%;
+}
+
+.status-message {
+    font-size: 15px;
+    margin-bottom: 15px;
+}
+
+/* ===== LOGS ===== */
+.log-section {
+    margin-top: 15px;
+}
+
+.log-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.log-header span {
+    font-weight: 600;
+}
+
+.log-container {
+    background: #1a202c;
+    color: #a0aec0;
+    border-radius: 8px;
+    padding: 12px 16px;
+    height: 200px;
+    overflow-y: auto;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.log-container .log-info {
+    color: #63b3ed;
+}
+.log-container .log-success {
+    color: #68d391;
+}
+.log-container .log-warning {
+    color: #f6ad55;
+}
+.log-container .log-error {
+    color: #fc8181;
+}
+
+/* ===== RESULT ===== */
+.result-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 15px;
+    flex-wrap: wrap;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 600px) {
+    header h1 { font-size: 1.5em; }
+    .radio-group { flex-direction: column; gap: 8px; }
+    .container { padding: 12px; }
+    section { padding: 18px; }
+    .result-actions { flex-direction: column; }
+    .result-actions .btn { width: 100%; text-align: center; }
+}
+
+/* ===== FOOTER ===== */
+footer {
+    text-align: center;
+    padding: 15px;
+    color: #a0aec0;
+    font-size: 13px;
+}

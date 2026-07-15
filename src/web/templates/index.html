@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APK Analyzer</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📱 APK Analyzer</h1>
+            <p>Сбор статистики использования идентификаторов устройств</p>
+            <div id="dockerStatus" class="docker-status">🔍 Проверка Docker...</div>
+        </header>
+
+        <main>
+            <section class="upload-section">
+                <h2>📦 Загрузка APK</h2>
+                <div class="drop-zone" id="dropZone">
+                    <p>Перетащите APK файл сюда</p>
+                    <p class="hint">или</p>
+                    <button class="btn btn-primary" id="selectFileBtn">Выбрать файл</button>
+                    <input type="file" id="fileInput" accept=".apk" style="display:none">
+                </div>
+                <div id="fileInfo" class="file-info" style="display:none">
+                    <span id="fileName"></span>
+                    <span id="fileSize"></span>
+                </div>
+            </section>
+
+            <section class="settings-section">
+                <h2>⚙️ Настройки анализа</h2>
+                
+                <div class="form-group">
+                    <label>Режим анализа:</label>
+                    <div class="radio-group">
+                        <label><input type="radio" name="mode" value="static" checked> 🔍 Статический</label>
+                        <label><input type="radio" name="mode" value="dynamic"> ⚡ Динамический</label>
+                        <label><input type="radio" name="mode" value="full"> 🔄 Полный</label>
+                    </div>
+                </div>
+
+                <div class="form-group" id="packageGroup" style="display:none">
+                    <label for="packageInput">📦 Package Name:</label>
+                    <input type="text" id="packageInput" placeholder="org.thoughtcrime.securesms">
+                    <span class="hint">Обязательно для динамического анализа</span>
+                </div>
+
+                <button class="btn btn-success" id="runBtn">🚀 Запустить анализ</button>
+            </section>
+
+            <section id="progressSection" style="display:none">
+                <h3>📊 Прогресс</h3>
+                <div class="progress-bar">
+                    <div id="progressFill" class="progress-fill" style="width: 0%"></div>
+                </div>
+                <div id="statusMessage" class="status-message">⏳ Подготовка...</div>
+                
+                <div class="log-section">
+                    <div class="log-header">
+                        <span>📋 Логи</span>
+                        <button class="btn btn-small" id="clearLogsBtn">Очистить</button>
+                    </div>
+                    <div id="logContainer" class="log-container"></div>
+                </div>
+            </section>
+
+            <section id="resultSection" style="display:none">
+                <h3>✅ Анализ завершён!</h3>
+                <div class="result-actions">
+                    <button class="btn btn-primary" id="openReportBtn">📊 Открыть отчёт</button>
+                    <button class="btn btn-success" id="downloadReportBtn">💾 Скачать JSON</button>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>APK Analyzer v1.0.0 — Дипломный проект</p>
+        </footer>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+</body>
+</html>
