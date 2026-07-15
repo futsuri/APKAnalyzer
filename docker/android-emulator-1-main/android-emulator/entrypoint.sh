@@ -29,42 +29,9 @@ sleep 5
 
 adb devices
 
-# ===== FRIDA SERVER =====
-echo "🎣 Installing Frida Server..."
-
-# Проверяем, есть ли файл в контейнере
-if [ -f /data/local/tmp/frida-server ]; then
-    # Копируем из контейнера в Android
-    adb push /data/local/tmp/frida-server /data/local/tmp/frida-server
-    adb shell chmod 755 /data/local/tmp/frida-server
-    echo "✅ Frida Server installed"
-else
-    echo "❌ Frida Server not found in /data/local/tmp/"
-    echo "   Please copy it manually:"
-    echo "   docker cp frida-server android-emulator:/data/local/tmp/frida-server"
-fi
-
-echo "🚀 Starting Frida Server..."
-
-# Запускаем на всех интерфейсах
-adb shell "/data/local/tmp/frida-server -l 0.0.0.0 >/data/local/tmp/frida.log 2>&1 &"
-
-sleep 3
-
-echo "🔍 Checking Frida Server..."
-
-# Проверка через pidof
-FRIDA_PID=$(adb shell pidof frida-server | tr -d '\r')
-if [ -n "$FRIDA_PID" ]; then
-    echo "✅ Frida Server running (PID: $FRIDA_PID)"
-else
-    echo "❌ Frida Server not running"
-    echo "--- Last 10 lines of frida.log ---"
-    adb shell cat /data/local/tmp/frida.log | tail -10 || true
-fi
-
-# Проверка порта
-echo "🔍 Checking port 27042..."
-adb shell netstat -an | grep 27042
+echo "🎣 Starting Frida Server..."
+sleep 10
+adb shell /data/local/tmp/frida-server &
+echo "✅ Frida Server started"
 
 tail -f /dev/null
