@@ -40,6 +40,9 @@ RUN apt-get install -y \
     mesa-utils \
     libglu1-mesa
 
+COPY frida-server-17.15.5-android-x86 /data/local/tmp/frida-server
+RUN chmod +x /data/local/tmp/frida-server
+
 RUN echo "no" | avdmanager create avd -n test_avd -k "system-images;android-30;google_apis;x86" --device "pixel"
 
 COPY entrypoint.sh /entrypoint.sh
