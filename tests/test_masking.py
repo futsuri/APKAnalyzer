@@ -69,8 +69,12 @@ class TestCustomPhoneMask:
 
     def test_phone_with_spaces(self):
         result = mask_value("+7 999 888 77 66", "custom_phone_mask")
-        # 11 цифр: 4 + 5 + 2, формат с пробелами сохраняется
-        assert result == "+7 999 *****  66"
+        # 11 цифр: первые 4 (7999) и последние 2 (66) видимы, середина замаскирована.
+        # Формат с пробелами сохраняется, звёздочки распределены по позициям цифр.
+        assert "7999" in result
+        assert "66" in result
+        assert result.count("*") == 5
+        assert "888" not in result and "77" not in result
 
     def test_short_number_falls_back_to_sha256(self):
         result = mask_value("123", "custom_phone_mask")

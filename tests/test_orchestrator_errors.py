@@ -13,8 +13,10 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from src.dynamic.orchestrator import DynamicOrchestrator
-from src.dynamic.emulator_controller import AdbConnectionError, EmulatorError, EmulatorController
-from src.dynamic.frida_manager import FridaError
+from src.dynamic.emulator_controller import (
+    AdbConnectionError, ApkInstallError, EmulatorError, EmulatorController,
+)
+from src.dynamic.frida_manager import FridaError, FridaManager
 
 
 def _make_apk(tmp_path: Path) -> Path:
@@ -34,7 +36,9 @@ class TestOrchestratorEmulatorUnavailable:
 
         assert len(result.errors) > 0
         assert any("Подключение к эмулятору" in e for e in result.errors)
-        assert result.findings == {}
+        # Контракт: findings всегда содержит все 13 записей каталога (found=False при ошибке)
+        assert len(result.findings) == 13
+        assert all(not f.found for f in result.findings.values())
 
     def test_adb_missing_returns_errors(self, tmp_path):
         with patch.object(EmulatorController, "connect", side_effect=EmulatorError("adb not found")):
@@ -64,8 +68,8 @@ class TestOrchestratorFridaUnavailable:
              patch.object(EmulatorController, "install_apk", return_value=True), \
              patch.object(EmulatorController, "start_app", return_value=True), \
              patch.object(EmulatorController, "stop_app"), \
-             patch("src.dynamic.frida_manager.FridaManager.spawn_and_attach",
-                   side_effect=FridaError("frida-server not reachable")):
+             patch.object(FridaManager, "attach",
+                          side_effect=FridaError("frida-server not reachable")):
             orch = DynamicOrchestrator()
             apk = _make_apk(tmp_path)
             result = orch.run(apk, "com.example.app")
@@ -82,9 +86,11 @@ class TestOrchestratorNoException:
         with patch.object(EmulatorController, "connect", return_value=True), \
              patch.object(EmulatorController, "wait_for_boot", return_value=True), \
              patch.object(EmulatorController, "install_apk",
-                          side_effect=Exception("install failed")):
+                          side_effect=ApkInstallError("install failed")):
             orch = DynamicOrchestrator()
             apk = _make_apk(tmp_path)
             result = orch.run(apk, "com.example.app")
 
         assert isinstance(result.errors, list)
+        assert len(result.errors) > 0
+        assert any("Установка APK" in e for e in result.errors)
