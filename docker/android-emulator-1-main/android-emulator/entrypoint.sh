@@ -1,5 +1,4 @@
 #!/bin/bash
-set -e
 
 export DISPLAY=:0
 
@@ -10,9 +9,10 @@ openbox &
 x11vnc -display :0 -nopw -listen localhost -xkb -forever &
 /opt/novnc/utils/novnc_proxy --vnc localhost:5900 --listen 6080 &
 
+# -accel tcg: software emulation (без KVM)
 $ANDROID_HOME/emulator/emulator -avd test_avd \
   -no-audio -no-boot-anim -gpu swiftshader_indirect \
-  -accel on -no-snapshot -port 5554 -verbose &
+  -accel tcg -no-snapshot -port 5554 -verbose &
 
 echo "⏳ Waiting for ADB device..."
 adb wait-for-device

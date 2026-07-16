@@ -10,15 +10,12 @@ services:
       - "6080:6080"   # noVNC
       - "5900:5900"   # VNC
       - "27042:27042" # Frida Server
-    privileged: true
     environment:
       - DISPLAY=:0
     depends_on:
       - proxy
-    devices:
-      - /dev/kvm
     volumes:
-      - /dev/kvm:/dev/kvm
+      - emulator-data:/data
     shm_size: 2g
     networks:
       - backend
@@ -48,3 +45,6 @@ services:
 
 networks:
   backend:
+
+volumes:
+  emulator-data:

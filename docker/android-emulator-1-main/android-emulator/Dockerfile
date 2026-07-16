@@ -43,7 +43,7 @@ RUN apt-get install -y \
 RUN echo "no" | avdmanager create avd -n test_avd -k "system-images;android-30;google_apis;x86" --device "pixel"
 
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
 
 EXPOSE 5555 6080 27042
 
