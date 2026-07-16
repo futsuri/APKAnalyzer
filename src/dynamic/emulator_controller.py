@@ -72,6 +72,7 @@ class EmulatorController:
             result = subprocess.check_output(
                 cmd, shell=True, text=True, timeout=timeout,
                 stderr=subprocess.STDOUT,
+                encoding="utf-8", errors="replace",
             )
             output = result.strip()
             logger.debug("adb output: %s", output[:200] if output else "(empty)")
@@ -126,6 +127,7 @@ class EmulatorController:
             result = subprocess.check_output(
                 cmd, shell=True, text=True, timeout=timeout,
                 stderr=subprocess.STDOUT,
+                encoding="utf-8", errors="replace",
             )
             return result.strip()
         except subprocess.TimeoutExpired:

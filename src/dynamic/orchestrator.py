@@ -123,20 +123,20 @@ class DynamicOrchestrator:
             script_path = TEMP_DIR / "frida_hooks_generated.js"
             save_hook_script(script_source, script_path)
 
-            # 5. Spawn + Attach Frida (ДО старта приложения!)
-            pid = None
+            # 5. Запуск приложения + Attach Frida
             try:
-                _, _, pid = self.frida.spawn_and_attach(package_name, script_source)
-                self.frida.resume(pid)
-                logger.info("Frida attached (PID %d), приложение запущено", pid)
+                self.emulator.start_app(package_name)
+                logger.info("Приложение запущено: %s", package_name)
+            except EmulatorError as e:
+                result.errors.append(f"Запуск приложения: {e}")
+                raise _AbortPipeline
+
+            try:
+                self.frida.attach(package_name, script_source)
+                logger.info("Frida attached к %s", package_name)
             except (FridaUnavailableError, FridaServerNotReachable,
                     ProcessAttachError, FridaError) as e:
                 result.errors.append(f"Frida: {e}")
-                # Пытаемся запустить приложение без Frida
-                try:
-                    self.emulator.start_app(package_name)
-                except EmulatorError:
-                    pass
                 raise _AbortPipeline
 
             # 6. Monkey-прогон (Frida уже хукает)

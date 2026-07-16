@@ -26,7 +26,8 @@ services:
     # Без depends_on — статика не зависит от эмулятора
     volumes:
       - ./data:/app/data
-      # APK монтируется через /app/input (см. run_analyzer.sh)
+      # APK монтируется через /app/input (общий том с вебом)
+      - ./uploads:/app/input:ro
     networks:
       - backend
     # По умолчанию запускаем статический анализ; APK передаётся аргументом.
@@ -44,6 +45,7 @@ services:
       - EMULATOR_HOST=android-emulator
     volumes:
       - ./data:/app/data
+      - ./uploads:/app/input:ro
     networks:
       - backend
     # Ограниченный restart — не бесконечный луп. 3 попытки.
@@ -51,6 +53,25 @@ services:
     # Динамический анализ запускается явно (нужны --mode/--package + APK).
     # При `docker compose up` без команды — idle.
     command: ["--help"]
+
+  apk-analyzer-web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: apk-analyzer-web
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+      - ./uploads:/app/uploads
+      # Docker socket — чтобы веб управлял compose-стеком (up/run/ps).
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - EMULATOR_HOST=android-emulator
+      - COMPOSE_PROJECT_NAME=apk-analyzer
+    networks:
+      - backend
+    restart: unless-stopped
 
 # Сеть `backend` объявлена в docker/android-emulator-1-main/docker-compose.yml
 # (подключён через include). Сервисы анализатора просто подключаются к ней.
